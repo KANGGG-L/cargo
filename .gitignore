@@ -1,0 +1,15 @@
+# env
+.env
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+.next/
+out/
+.DS_Store
+*.sqlite
+*.db
+
+# keep data dirs
+!data/**/*.gitkeep

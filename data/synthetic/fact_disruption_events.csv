@@ -1,0 +1,4 @@
+event_id,event_code,event_category,affected_mode,start_timestamp,end_timestamp,primary_location,description,target_metric_impact
+EVT-2025-001,TYPHOON_2025_09,WEATHER,AIR,2025-09-15T00:00:00Z,2025-09-21T23:59:59Z,HKG,Super Typhoon simulated strike directly impacting HKG apron and cargo terminal operations with extensive flight cancellations.,air_otp_drop_below_50_backlog_spike
+EVT-2026-002,YANTIAN_CONGESTION_2026_03,PORT_CONGESTION,SEA,2026-03-01T00:00:00Z,2026-03-15T23:59:59Z,CNYTN,Severe berth and yard crane congestion at Shenzhen Yantian Feeder Terminal delaying barges to HKG Marine Terminal.,feeder_sea_delay_over_3000_min_missed_connections
+EVT-2026-003,PRICING_ERROR_2026_06,COMMERCIAL_MISCONFIGURATION,COMMERCIAL,2026-06-01T00:00:00Z,2026-06-30T23:59:59Z,HKG,Contract rate misconfiguration on HKG-ORD Transpacific corridor underbilling contracted revenue below actual charter and fuel cost.,negative_gross_margin_transpacific

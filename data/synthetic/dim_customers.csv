@@ -1,0 +1,51 @@
+customer_id,customer_name,industry_segment,region,tier,payment_terms
+CUST-001,Golden Dragon Logistics,forwarder,Greater_Bay_Area,Strategic,Net_30
+CUST-002,Pacific Bridge Forwarding,e_commerce,APAC,Tier_1,Net_60
+CUST-003,Pearl River Express,manufacturer,EMEA,Tier_2,Prepaid
+CUST-004,Silk Route Cargo,perishable_broker,Americas,Strategic,Net_30
+CUST-005,Harbour Link Global,pharma_logistics,Greater_Bay_Area,Tier_1,Net_60
+CUST-006,Lotus Freight Systems,forwarder,APAC,Tier_2,Prepaid
+CUST-007,Meridian Trade Lines,e_commerce,EMEA,Strategic,Net_30
+CUST-008,Jade Gateway International,manufacturer,Americas,Tier_1,Net_60
+CUST-009,Summit Cross-Border,perishable_broker,Greater_Bay_Area,Tier_2,Prepaid
+CUST-010,Azure Ocean Carriers,pharma_logistics,APAC,Strategic,Net_30
+CUST-011,Crimson Lane Logistics,forwarder,EMEA,Tier_1,Net_60
+CUST-012,Delta Freight Works,e_commerce,Americas,Tier_2,Prepaid
+CUST-013,Evergreen Valley Cargo,manufacturer,Greater_Bay_Area,Strategic,Net_30
+CUST-014,Fortune Star Shipping,perishable_broker,APAC,Tier_1,Net_60
+CUST-015,Grand Canal Forwarding,pharma_logistics,EMEA,Tier_2,Prepaid
+CUST-016,Horizon Air Cargo Agency,forwarder,Americas,Strategic,Net_30
+CUST-017,Imperial Dragon Trading,e_commerce,Greater_Bay_Area,Tier_1,Net_60
+CUST-018,Jetstream Consolidators,manufacturer,APAC,Tier_2,Prepaid
+CUST-019,Kite & Compass Logistics,perishable_broker,EMEA,Strategic,Net_30
+CUST-020,Lantern Bay Freight,pharma_logistics,Americas,Tier_1,Net_60
+CUST-021,Mountain Pass Shipping,forwarder,Greater_Bay_Area,Tier_2,Prepaid
+CUST-022,Neon Harbour Express,e_commerce,APAC,Strategic,Net_30
+CUST-023,Orient Crown Logistics,manufacturer,EMEA,Tier_1,Net_60
+CUST-024,Phoenix Wing Cargo,perishable_broker,Americas,Tier_2,Prepaid
+CUST-025,Quantum Freight Solutions,pharma_logistics,Greater_Bay_Area,Strategic,Net_30
+CUST-026,Red Pine Trading,forwarder,APAC,Tier_1,Net_60
+CUST-027,Southern Cross Cargo,e_commerce,EMEA,Tier_2,Prepaid
+CUST-028,Tiger Gate Logistics,manufacturer,Americas,Strategic,Net_30
+CUST-029,Unity Freight Network,perishable_broker,Greater_Bay_Area,Tier_1,Net_60
+CUST-030,Victory Anchor Shipping,pharma_logistics,APAC,Tier_2,Prepaid
+CUST-031,West Wind Express,forwarder,EMEA,Strategic,Net_30
+CUST-032,Xi'an Silk Road Cargo,e_commerce,Americas,Tier_1,Net_60
+CUST-033,Yellow River Freight,manufacturer,Greater_Bay_Area,Tier_2,Prepaid
+CUST-034,Zenith Cargo Partners,perishable_broker,APAC,Strategic,Net_30
+CUST-035,Apex Perishables Broker,pharma_logistics,EMEA,Tier_1,Net_60
+CUST-036,Bright Pharma Express,forwarder,Americas,Tier_2,Prepaid
+CUST-037,ColdChain Nexus,e_commerce,Greater_Bay_Area,Strategic,Net_30
+CUST-038,DeepFreeze Logistics,manufacturer,APAC,Tier_1,Net_60
+CUST-039,Eagle Cold Freight,perishable_broker,EMEA,Tier_2,Prepaid
+CUST-040,FrostLine Pharma Cargo,pharma_logistics,Americas,Strategic,Net_30
+CUST-041,Glacier Route Brokers,forwarder,Greater_Bay_Area,Tier_1,Net_60
+CUST-042,Helix Bio Freight,e_commerce,APAC,Tier_2,Prepaid
+CUST-043,Ironwood Industrial Cargo,manufacturer,EMEA,Strategic,Net_30
+CUST-044,JetCold Cold Chain,perishable_broker,Americas,Tier_1,Net_60
+CUST-045,Kestrel Pharma Lines,pharma_logistics,Greater_Bay_Area,Tier_2,Prepaid
+CUST-046,Lumen Life Logistics,forwarder,APAC,Strategic,Net_30
+CUST-047,MedBridge Cold Cargo,e_commerce,EMEA,Tier_1,Net_60
+CUST-048,Nimbus Fresh Freight,manufacturer,Americas,Tier_2,Prepaid
+CUST-049,Orchid Fresh Export,perishable_broker,Greater_Bay_Area,Strategic,Net_30
+CUST-050,Polar Star Perishables,pharma_logistics,APAC,Tier_1,Net_60

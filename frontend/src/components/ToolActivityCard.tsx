@@ -18,8 +18,9 @@ export interface ToolPayload {
   overlapping_events?: Record<string, unknown>[];
   /* simulate_disruption */
   scenario?: string;
+  mode?: string;
   recovery_curve?: { day: string; backlog_tonnes: number }[];
-  affected_air_legs?: number;
+  affected_legs?: number;
   revenue_at_risk_musd?: number;
   /* quote_booking */
   legs?: Record<string, unknown>[];

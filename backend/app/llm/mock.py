@@ -87,6 +87,25 @@ class MockLLM:
 
 
 MOCK_PLANS: list[dict[str, Any]] = [{
+        "id": "truck",
+        "keywords": ["truck", "checkpoint", "border", "shenzhen bay", "crossing"],
+        "steps": [
+            {
+                "tool": "diagnose_anomaly",
+                "args": {"scope": "truck", "anchor_date": "2025-11-25"},
+            }
+        ],
+        "answer": (
+            "The road-side scan (as of 2025-11-25) flags Shenzhen Bay (SZBP): truck "
+            "OTP collapsed to ~58% against a ~90% baseline and average crossing time "
+            "tripled from ~45 to ~215 minutes — matching EVT-2025-002 (checkpoint "
+            "congestion, Nov 10-24).\n\n"
+            "Recommendations: re-route time-critical feeder trips via Huanggang while "
+            "SZBP queue depth exceeds a set threshold, pre-book extended counter "
+            "windows with the terminal, and alert shippers feeding the Nov peak."
+        ),
+    },
+    {
         "id": "diagnose",
         "keywords": ["why did", "anomaly", "diagnose", "what's wrong", "deviation"],
         "steps": [

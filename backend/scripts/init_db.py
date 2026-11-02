@@ -73,6 +73,8 @@ def init_database():
         ("fact_shipment_legs", SYNTHETIC_DIR / "fact_shipment_legs.csv"),
         ("fact_air_kpi_daily", SYNTHETIC_DIR / "fact_air_kpi_daily.csv"),
         ("fact_ocean_rate_weekly", SYNTHETIC_DIR / "fact_ocean_rate_weekly.csv"),
+        ("fact_sea_kpi_weekly", SYNTHETIC_DIR / "fact_sea_kpi_weekly.csv"),
+        ("fact_truck_kpi_daily", SYNTHETIC_DIR / "fact_truck_kpi_daily.csv"),
         ("fact_rate_cards", SYNTHETIC_DIR / "fact_rate_cards.csv"),
         ("fact_disruption_events", SYNTHETIC_DIR / "fact_disruption_events.csv"),
     ]

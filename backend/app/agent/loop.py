@@ -20,8 +20,46 @@ from app.llm.client import get_llm
 MAX_ROUNDS = 6
 
 
+def _data_context() -> str:
+    """Ground the live model in the dataset's actual horizon and known events.
+
+    Without this, the model invents anchor dates outside the planted windows
+    and diagnose_anomaly comes back empty-handed.
+    """
+    try:
+        from app.agent.extra_tools import _ro
+
+        conn = _ro()
+        try:
+            first, last = conn.execute(
+                "SELECT MIN(report_date), MAX(report_date) FROM fact_air_kpi_daily"
+            ).fetchone()
+            events = conn.execute(
+                "SELECT event_code, start_timestamp, end_timestamp, affected_mode "
+                "FROM fact_disruption_events ORDER BY start_timestamp"
+            ).fetchall()
+        finally:
+            conn.close()
+        lines = [f"Dataset horizon: {first} to {last} (operations history)."]
+        lines.append("Known disruption events on record:")
+        for code, start, end, mode in events:
+            lines.append(f"- {code} ({mode}): {start[:10]} → {end[:10]}")
+        lines.append(
+            "When diagnosing a suspected window, set anchor_date to the LAST day of "
+            "the suspected disruption window — the scan compares the 7 days up to "
+            "that anchor against the prior ~3 months."
+        )
+        return "\n".join(lines)
+    except Exception:
+        return ""
+
+
 def _build_messages(user_message: str, history: list[dict[str, str]]) -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    system = SYSTEM_PROMPT
+    ctx = _data_context()
+    if ctx:
+        system += "\n\n## Dataset facts\n" + ctx
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system}]
     for msg in history[-8:]:
         if msg.get("role") in ("user", "assistant") and msg.get("content"):
             messages.append({"role": msg["role"], "content": msg["content"]})

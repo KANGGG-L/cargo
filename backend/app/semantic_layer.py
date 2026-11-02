@@ -74,6 +74,26 @@ METRIC_DEFINITIONS: Dict[str, Dict[str, Any]] = {
             "FROM fact_air_kpi_daily"
         ),
     },
+    "sea_kpi_departure_otp": {
+        "name": "Feeder Departure OTP (weekly KPI)",
+        "description": "Weekly feeder sailings departing within 240 minutes of schedule, averaged across the corridor from fact_sea_kpi_weekly.",
+        "unit": "percentage",
+        "formula": "100.0 * AVG(on_time_departure_rate)",
+        "canonical_sql": (
+            "SELECT ROUND(100.0 * AVG(on_time_departure_rate), 2) AS sea_otp_pct "
+            "FROM fact_sea_kpi_weekly"
+        ),
+    },
+    "truck_kpi_arrival_otp": {
+        "name": "Cross-Border Truck OTP (daily KPI)",
+        "description": "Daily truck trips arriving within 60 minutes of schedule at GBA checkpoints, averaged from fact_truck_kpi_daily.",
+        "unit": "percentage",
+        "formula": "100.0 * AVG(on_time_arrival_rate)",
+        "canonical_sql": (
+            "SELECT ROUND(100.0 * AVG(on_time_arrival_rate), 2) AS truck_otp_pct "
+            "FROM fact_truck_kpi_daily"
+        ),
+    },
     "hub_dwell_time": {
         "name": "HKG Hub Dwell Time",
         "description": "Average hours spent at HKG between inbound feeder leg arrival and outbound air leg departure.",
@@ -206,6 +226,34 @@ TABLE_CATALOG: Dict[str, Dict[str, Any]] = {
             "primary_location": "Primary focal facility or hub",
             "description": "Full narrative description of disruption incident",
             "target_metric_impact": "Primary metric expected to show anomalous deviation",
+        },
+    },
+    "fact_sea_kpi_weekly": {
+        "description": "Weekly feeder-barge performance per corridor — the sea counterpart of the air lane daily KPI.",
+        "columns": {
+            "week_start_date": "Monday of the sailing week (YYYY-MM-DD)",
+            "feeder_corridor": "Feeder corridor (PRD_FEEDER_HKG, YANTIAN_FEEDER_HKG, NINGBO_COASTAL_HKG, SHANGHAI_COASTAL_HKG)",
+            "scheduled_sailings": "Sailings scheduled in the week",
+            "completed_sailings": "Sailings operated",
+            "cancelled_sailings": "Sailings cancelled",
+            "on_time_departure_rate": "Fraction departing within 240 minutes of schedule (0.0-1.0)",
+            "avg_transit_hours": "Average port-to-port transit hours",
+            "slot_utilization": "Booked slot utilization (0.0-1.0)",
+            "backlog_teu": "Unshipped TEU waiting at origin",
+        },
+    },
+    "fact_truck_kpi_daily": {
+        "description": "Daily cross-border truck performance per GBA checkpoint — the road counterpart of the air lane daily KPI.",
+        "columns": {
+            "report_date": "Date of report (YYYY-MM-DD)",
+            "checkpoint": "GBA boundary checkpoint (SZBP = Shenzhen Bay, HGA = Huanggang, WJD = Wenjindu)",
+            "scheduled_trips": "Cross-border feeder trips scheduled",
+            "completed_trips": "Trips completed",
+            "cancelled_trips": "Trips cancelled",
+            "on_time_arrival_rate": "Fraction arriving within 60 minutes of schedule (0.0-1.0)",
+            "avg_crossing_minutes": "Average border crossing time in minutes",
+            "queue_backlog_trucks": "Trucks waiting in queue at checkpoint",
+            "avg_cost_per_tonne_usd": "Average trucking cost per tonne",
         },
     },
     "public_hkg_air_cargo_monthly": {
@@ -565,6 +613,66 @@ FEW_SHOT_QUERY_CATALOG: List[Dict[str, str]] = [
             "WHERE fl.rn = 1 "
             "GROUP BY c.tier "
             "ORDER BY delivery_otp_pct ASC;"
+        ),
+    },
+    # ---------------- Group E: Sea & Road Mode Performance
+    {
+        "id": "E1",
+        "category": "Sea & Road Mode Performance",
+        "question": "How did the Yantian feeder corridor perform during the March 2026 congestion (weekly sailings and OTP)?",
+        "sql": (
+            "SELECT week_start_date, scheduled_sailings, completed_sailings, cancelled_sailings, "
+            "       ROUND(on_time_departure_rate * 100.0, 1) AS departure_otp_pct, "
+            "       ROUND(avg_transit_hours, 1) AS avg_transit_hours, "
+            "       ROUND(backlog_teu, 0) AS backlog_teu "
+            "FROM fact_sea_kpi_weekly "
+            "WHERE feeder_corridor = 'YANTIAN_FEEDER_HKG' "
+            "  AND week_start_date BETWEEN '2026-02-23' AND '2026-03-30' "
+            "ORDER BY week_start_date ASC;"
+        ),
+    },
+    {
+        "id": "E2",
+        "category": "Sea & Road Mode Performance",
+        "question": "Which feeder corridor has the highest slot utilization and the lowest average transit time?",
+        "sql": (
+            "SELECT feeder_corridor, "
+            "       ROUND(AVG(slot_utilization) * 100.0, 1) AS avg_slot_utilization_pct, "
+            "       ROUND(AVG(avg_transit_hours), 1) AS avg_transit_hours, "
+            "       ROUND(AVG(on_time_departure_rate) * 100.0, 1) AS avg_departure_otp_pct "
+            "FROM fact_sea_kpi_weekly "
+            "GROUP BY feeder_corridor "
+            "ORDER BY avg_slot_utilization_pct DESC;"
+        ),
+    },
+    {
+        "id": "E3",
+        "category": "Sea & Road Mode Performance",
+        "question": "How did the Shenzhen Bay checkpoint perform during the November 2025 congestion compared to the other checkpoints?",
+        "sql": (
+            "SELECT checkpoint, "
+            "       ROUND(AVG(on_time_arrival_rate) * 100.0, 1) AS arrival_otp_pct, "
+            "       ROUND(AVG(avg_crossing_minutes), 0) AS avg_crossing_minutes, "
+            "       ROUND(AVG(queue_backlog_trucks), 0) AS avg_queue_backlog_trucks "
+            "FROM fact_truck_kpi_daily "
+            "WHERE report_date BETWEEN '2025-11-10' AND '2025-11-24' "
+            "GROUP BY checkpoint "
+            "ORDER BY arrival_otp_pct ASC;"
+        ),
+    },
+    {
+        "id": "E4",
+        "category": "Sea & Road Mode Performance",
+        "question": "What is the daily truck OTP trend at Shenzhen Bay checkpoint around the November 2025 congestion window?",
+        "sql": (
+            "SELECT report_date, "
+            "       ROUND(on_time_arrival_rate * 100.0, 1) AS arrival_otp_pct, "
+            "       ROUND(avg_crossing_minutes, 0) AS avg_crossing_minutes, "
+            "       ROUND(queue_backlog_trucks, 0) AS queue_backlog_trucks "
+            "FROM fact_truck_kpi_daily "
+            "WHERE checkpoint = 'SZBP' "
+            "  AND report_date BETWEEN '2025-11-05' AND '2025-11-29' "
+            "ORDER BY report_date ASC;"
         ),
     },
 ]

@@ -23,13 +23,21 @@
 
 走廊:`YANTIAN_FEEDER_HKG`、`PRD_FEEDER_HKG`、`NINGBO/SHANGHAI_COASTAL_HKG`。费率卡按 `mode × origin × dest × weight_break`(MIN/+0KG/+300KG/+1000KG 美元每公斤;PER_FEU/PER_TRUCK 每箱/每车)。
 
-### fact_disruption_events(三个可复现剧情)
+### fact_sea_kpi_weekly(驳船走廊×周)/ fact_truck_kpi_daily(口岸×日)
 
-| 事件 | 窗口 | 数据指纹 |
-|---|---|---|
-| TYPHOON_2025_09(HKG,WEATHER) | 2025-09-15 → 09-21 | 空运 OTP 86% → ~30%,大量取消,积压 3-4k t |
-| YANTIAN_CONGESTION_2026_03(CNYTN,PORT_CONGESTION) | 2026-03-01 → 03-15 | 盐田驳船延误 ~2h → 50-70h;走廊运价 +35~55% |
-| PRICING_ERROR_2026_06(HKG-ORD,COMMERCIAL) | 2026-06-01 → 06-30 | 航线毛利 +20% → −23%;yield 塌至网络 45% |
+海运与陆运的一级 KPI 序列(与空运航线日卡对等):
+
+- **fact_sea_kpi_weekly**:走廊 × 周 —— 计划/完成/取消航次、`on_time_departure_rate`(±240 min)、平均航时、舱位利用率、积压 TEU。基准:OTP 84-94%,盐田拥堵周 42-60%
+- **fact_truck_kpi_daily**:口岸 × 日(SZBP 深圳湾 / HGA 皇岗 / WJD 文锦渡)—— 计划/完成/取消班次、`on_time_arrival_rate`(±60 min)、平均通关分钟、排队积压、每吨成本。基准:OTP 84-94%,通关 35-55 min;深圳湾拥堵期 OTP 48-66%、通关 150-260 min
+
+### fact_disruption_events(四个可复现剧情,三模态各有归属)
+
+| 事件 | 模态 | 窗口 | 数据指纹 |
+|---|---|---|---|
+| TYPHOON_2025_09(HKG,WEATHER) | AIR | 2025-09-15 → 09-21 | 空运 OTP 86% → ~30%,大量取消,积压 3-4k t |
+| SHENZHEN_BAY_CONGESTION_2025_11(SZBP,BORDER_CONGESTION) | TRUCK | 2025-11-10 → 11-24 | 口岸 OTP 90% → ~58%,通关 44 → 214 min;SZX feeder 卡车 +2-6h,连锁脱班 |
+| YANTIAN_CONGESTION_2026_03(CNYTN,PORT_CONGESTION) | SEA | 2026-03-01 → 03-15 | 盐田驳船延误 ~2h → 50-70h;走廊运价 +35~55%;周报 OTP 59% |
+| PRICING_ERROR_2026_06(HKG-ORD,COMMERCIAL) | COMMERCIAL | 2026-06-01 → 06-30 | 航线毛利 +20% → −23%;yield 塌至网络 45% |
 
 ### public_*(宏观,带来源)
 

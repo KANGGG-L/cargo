@@ -3,6 +3,8 @@ export const API_BASE =
 
 export interface OverviewKpis {
   air_otp_pct: number;
+  sea_otp_pct: number;
+  truck_otp_pct: number;
   multimodal_otp_pct: number;
   load_factor_pct: number;
   avg_dwell_hours: number;
@@ -50,9 +52,27 @@ export interface WeeklyRatePoint {
   prd_feu: number | null;
 }
 
+export interface TruckDailyPoint {
+  date: string;
+  truck_otp_pct: number;
+  avg_crossing_minutes: number;
+  avg_backlog_trucks: number;
+}
+
+export interface SeaWeeklyPoint {
+  week: string;
+  corridor: string;
+  sea_otp_pct: number;
+  avg_transit_hours: number;
+  cancelled_sailings: number;
+  backlog_teu: number;
+}
+
 export interface TrendsPayload {
   daily: TrendPoint[];
   monthly: MonthlyPoint[];
+  daily_truck: TruckDailyPoint[];
+  weekly_sea: SeaWeeklyPoint[];
   weekly_rates: WeeklyRatePoint[];
 }
 
@@ -83,11 +103,20 @@ export interface ChainMix {
   revenue_musd: number;
 }
 
+export interface TruckCheckpoint {
+  checkpoint: string;
+  truck_otp_pct: number;
+  avg_crossing_minutes: number;
+  avg_backlog_trucks: number;
+  cancelled_trips: number;
+}
+
 export interface NetworkPayload {
   mode_split: ModeSplit[];
   chain_mix: ChainMix[];
   air_lanes: AirLane[];
   feeder_ports: FeederPort[];
+  truck_checkpoints: TruckCheckpoint[];
 }
 
 async function getJson<T>(path: string): Promise<T> {

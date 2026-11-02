@@ -48,6 +48,72 @@ export default function OverviewPage() {
   }
 
   const k = overview.kpis;
+
+  const truckOption: EChartsOption = {
+    legend: { ...DARK_LEGEND, data: ["Truck OTP %", "Avg Crossing (min)"] },
+    grid: { left: 40, right: 45, top: 30, bottom: 45 },
+    dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }],
+    xAxis: { type: "category", data: trends.daily_truck.map((d) => d.date), ...DARK_AXIS },
+    yAxis: [
+      { type: "value", min: 0, max: 100, ...DARK_AXIS },
+      { type: "value", ...DARK_AXIS },
+    ],
+    series: [
+      {
+        name: "Truck OTP %",
+        type: "line",
+        showSymbol: false,
+        lineStyle: { width: 1.5, color: "#34d399" },
+        itemStyle: { color: "#34d399" },
+        data: trends.daily_truck.map((d) => d.truck_otp_pct),
+        markArea: {
+          itemStyle: { color: "rgba(244,63,94,0.12)" },
+          data: [[{ name: "SZBP congestion", xAxis: "2025-11-10" }, { xAxis: "2025-11-24" }]],
+        },
+      },
+      {
+        name: "Avg Crossing (min)",
+        type: "line",
+        yAxisIndex: 1,
+        showSymbol: false,
+        lineStyle: { width: 1.5, color: "#f59e0b" },
+        itemStyle: { color: "#f59e0b" },
+        data: trends.daily_truck.map((d) => d.avg_crossing_minutes),
+      },
+    ],
+    tooltip: { trigger: "axis" },
+  };
+
+  const seaCorridors = [...new Set(trends.weekly_sea.map((r) => r.corridor))];
+  const seaWeeks = [...new Set(trends.weekly_sea.map((r) => r.week))].sort();
+  const seaOption: EChartsOption = {
+    legend: { ...DARK_LEGEND, data: seaCorridors },
+    grid: { left: 40, right: 30, top: 30, bottom: 45 },
+    dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }],
+    xAxis: { type: "category", data: seaWeeks, ...DARK_AXIS },
+    yAxis: { type: "value", min: 0, max: 100, ...DARK_AXIS },
+    series: seaCorridors.map((cor, i) => ({
+      name: cor,
+      type: "line" as const,
+      showSymbol: false,
+      lineStyle: { width: 1.5 },
+      itemStyle: { color: ["#818cf8", "#f472b6", "#38bdf8", "#fbbf24"][i % 4] },
+      data: seaWeeks.map(
+        (w) =>
+          trends.weekly_sea.find((r) => r.week === w && r.corridor === cor)?.sea_otp_pct ?? null
+      ),
+      ...(cor === "YANTIAN_FEEDER_HKG"
+        ? {
+            markArea: {
+              itemStyle: { color: "rgba(244,63,94,0.12)" },
+              data: [[{ name: "Congestion", xAxis: "2026-03-02" }, { xAxis: "2026-03-16" }]],
+            },
+          }
+        : {}),
+    })),
+    tooltip: { trigger: "axis" },
+  };
+
   const dailyOption: EChartsOption = {
     legend: { ...DARK_LEGEND, data: ["Air OTP %", "Load Factor %"] },
     grid: { left: 40, right: 40, top: 30, bottom: 45 },
@@ -177,11 +243,40 @@ export default function OverviewPage() {
     tooltip: { trigger: "axis" },
   };
 
+  const checkpointOption: EChartsOption = {
+    legend: { ...DARK_LEGEND, data: ["Truck OTP %", "Avg Crossing (min)"] },
+    grid: { left: 60, right: 45, top: 30, bottom: 25 },
+    xAxis: { type: "category", data: network.truck_checkpoints.map((c) => c.checkpoint), ...DARK_AXIS },
+    yAxis: [
+      { type: "value", min: 0, max: 100, ...DARK_AXIS },
+      { type: "value", ...DARK_AXIS },
+    ],
+    series: [
+      {
+        name: "Truck OTP %",
+        type: "bar",
+        itemStyle: { color: "#34d399", borderRadius: [3, 3, 0, 0] },
+        data: network.truck_checkpoints.map((c) => c.truck_otp_pct),
+      },
+      {
+        name: "Avg Crossing (min)",
+        type: "line",
+        yAxisIndex: 1,
+        lineStyle: { width: 2, color: "#f59e0b" },
+        itemStyle: { color: "#f59e0b" },
+        data: network.truck_checkpoints.map((c) => c.avg_crossing_minutes),
+      },
+    ],
+    tooltip: { trigger: "axis" },
+  };
+
   return (
     <div className="space-y-5">
-      {/* KPI row */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+      {/* KPI row — three modes at equal footing */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <KpiCard label="Air OTP (±15min)" value={k.air_otp_pct} unit="%" hint="flight leg level" />
+        <KpiCard label="Sea OTP (±4h)" value={k.sea_otp_pct} unit="%" hint="feeder barge legs" />
+        <KpiCard label="Truck OTP (±1h)" value={k.truck_otp_pct} unit="%" hint="cross-border legs" />
         <KpiCard label="E2E Shipment OTP" value={k.multimodal_otp_pct} unit="%" hint="±60 min tolerance" />
         <KpiCard label="Cargo Load Factor" value={k.load_factor_pct} unit="%" hint="RTK / ATK, HKG network" />
         <KpiCard label="Hub Dwell (avg)" value={k.avg_dwell_hours} unit="h" hint="feeder arrival → wheels up" />
@@ -207,11 +302,14 @@ export default function OverviewPage() {
 
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <ChartPanel title="Daily Air Performance — OTP & Load Factor (typhoon window shaded)" option={dailyOption} height={320} />
+        <ChartPanel title="Air — Daily OTP & Load Factor (typhoon window shaded)" option={dailyOption} height={320} />
+        <ChartPanel title="Road — Daily Truck OTP & Border Crossing Time (SZBP congestion shaded)" option={truckOption} height={320} />
+        <ChartPanel title="Sea — Weekly Feeder Departure OTP by Corridor (Yantian congestion shaded)" option={seaOption} height={320} />
         <ChartPanel title="Monthly Revenue & Gross Margin" option={monthlyOption} height={320} />
         <ChartPanel title="Transport Mode Split (legs)" option={modeOption} height={280} />
         <ChartPanel title="Top Air Lanes by Carried Tonnes" option={laneOption} height={280} />
         <ChartPanel title="Feeder Port Health (sea legs into HKG)" option={feederOption} height={280} />
+        <ChartPanel title="Cross-Border Checkpoints (truck, KPI daily)" option={checkpointOption} height={280} />
         <div className="rounded-xl border border-slate-800 bg-[#0f1729] p-4">
           <h3 className="mb-3 text-sm font-semibold tracking-wide text-slate-300">
             Chain Mix — Revenue by Routing Pattern

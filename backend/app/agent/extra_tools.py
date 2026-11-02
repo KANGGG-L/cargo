@@ -104,6 +104,30 @@ WHERE r.recent_margin - b.baseline_margin < -8
 ORDER BY margin_drop_pp ASC
 """
 
+TRUCK_SQL = """
+WITH recent AS (
+  SELECT checkpoint, ROUND(AVG(on_time_arrival_rate) * 100.0, 1) AS recent_otp,
+         ROUND(AVG(avg_crossing_minutes), 0) AS recent_crossing_min,
+         ROUND(AVG(queue_backlog_trucks), 0) AS recent_backlog
+  FROM fact_truck_kpi_daily
+  WHERE report_date > DATE(:anchor, '-7 days') AND report_date <= :anchor
+  GROUP BY checkpoint
+),
+baseline AS (
+  SELECT checkpoint, ROUND(AVG(on_time_arrival_rate) * 100.0, 1) AS baseline_otp,
+         ROUND(AVG(avg_crossing_minutes), 0) AS baseline_crossing_min
+  FROM fact_truck_kpi_daily
+  WHERE report_date > DATE(:anchor, '-67 days') AND report_date <= DATE(:anchor, '-7 days')
+  GROUP BY checkpoint
+)
+SELECT r.checkpoint, r.recent_otp, b.baseline_otp,
+       ROUND(b.baseline_otp - r.recent_otp, 1) AS otp_drop_pp,
+       r.recent_crossing_min, b.baseline_crossing_min, r.recent_backlog
+FROM recent r JOIN baseline b ON r.checkpoint = b.checkpoint
+WHERE b.baseline_otp - r.recent_otp > 8
+ORDER BY otp_drop_pp DESC
+"""
+
 EVENTS_SQL = """
 SELECT event_code, event_category, primary_location, start_timestamp, end_timestamp, description
 FROM fact_disruption_events
@@ -127,6 +151,10 @@ async def tool_diagnose_anomaly(
         if scope in ("all", "sea"):
             findings += [
                 {**r, "metric": "sea_delay"} for r in _deviation(conn, SEA_SQL, {"anchor_ts": anchor_ts})
+            ]
+        if scope in ("all", "truck"):
+            findings += [
+                {**r, "metric": "truck_otp"} for r in _deviation(conn, TRUCK_SQL, {"anchor": anchor})
             ]
         if scope in ("all", "commercial"):
             findings += [
@@ -170,7 +198,7 @@ DIAGNOSE_SPEC = ToolSpec(
         "properties": {
             "scope": {
                 "type": "string",
-                "enum": ["all", "air", "sea", "commercial"],
+                "enum": ["all", "air", "sea", "truck", "commercial"],
                 "description": "Which KPI families to scan. Default 'all'.",
             },
             "anchor_date": {
@@ -204,24 +232,38 @@ async def tool_simulate_disruption(
                  FROM fact_shipment_legs WHERE transport_mode = 'AIR') AS span_days,
               (SELECT SUM(total_chargeable_weight_kg) FROM dim_shipments) AS total_weight_kg,
               (SELECT SUM(contracted_revenue_usd) FROM dim_shipments) AS total_revenue_usd,
-              (SELECT COUNT(*) FROM dim_shipments) AS total_shipments
+              (SELECT COUNT(*) FROM dim_shipments) AS total_shipments,
+              (SELECT AVG(scheduled_trips) FROM fact_truck_kpi_daily) AS avg_daily_truck_trips
             """
         ).fetchone()
-        total_air_legs, span_days, total_weight_kg, total_revenue, total_shipments = stats
+        total_air_legs, span_days, total_weight_kg, total_revenue, total_shipments, avg_daily_truck_trips = stats
         span_days = max(span_days or 548, 1)
         legs_per_day = total_air_legs / span_days
         tonnes_per_day = (total_weight_kg / span_days) / 1000.0
         revenue_per_tonne = total_revenue / (total_weight_kg / 1000.0)
+        avg_daily_truck_trips = avg_daily_truck_trips or 50.0
 
         if event_type == "port_congestion_yantian":
             uplift = 1.0 + 0.08 * severity
             affected_legs = int(legs_per_day * 0.4 * duration_hours / 24 * 2)  # 40% of feeders touch CNYTN
             delay_hours = round(12 + 14 * severity, 1)
             rate_note = f"Yantian feeder spot rates estimated +{int((uplift - 1) * 100)}% while congestion lasts"
+            mode = "SEA"
+        elif event_type == "border_congestion_szbp":
+            # Cross-border truck congestion at Shenzhen Bay: SZX feeder trucks queue,
+            # missed HKG connections cascade into the air network downstream.
+            affected_legs = int(avg_daily_truck_trips / 3 * duration_hours / 24)  # ~1/3 of trips use SZBP
+            delay_hours = round(2 + 1.2 * severity, 1)
+            rate_note = (
+                "Trucking spot cost rises 10-25% (queue hours are unpaid but demurrage at factories accrues); "
+                "downstream air legs absorb the missed connections as next-day rebooking"
+            )
+            mode = "TRUCK"
         else:  # typhoon_hkg_closure (default)
             affected_legs = int(legs_per_day * duration_hours / 24)
             delay_hours = round(18 + 16 * severity, 1)
             rate_note = "spot air rates typically spike 15-30% after reopening as backlog clears"
+            mode = "AIR"
 
         backlog_tonnes = round(tonnes_per_day * duration_hours / 24 * (1 + 0.15 * (severity - 3)), 1)
         revenue_at_risk_musd = round(backlog_tonnes * revenue_per_tonne / 1e6, 2)
@@ -237,9 +279,10 @@ async def tool_simulate_disruption(
 
     payload = {
         "scenario": event_type,
+        "mode": mode,
         "duration_hours": duration_hours,
         "severity": severity,
-        "affected_air_legs": affected_legs,
+        "affected_legs": affected_legs,
         "avg_delay_hours": delay_hours,
         "backlog_tonnes": backlog_tonnes,
         "revenue_at_risk_musd": revenue_at_risk_musd,
@@ -249,7 +292,7 @@ async def tool_simulate_disruption(
     }
     digest = (
         f"Simulation ({event_type}, {duration_hours}h, severity {severity}/5): "
-        f"{affected_legs} air legs affected, avg delay {delay_hours} h, backlog {backlog_tonnes} t, "
+        f"{affected_legs} {mode.lower()} legs affected, avg delay {delay_hours} h, backlog {backlog_tonnes} t, "
         f"revenue at risk ${revenue_at_risk_musd}M, backlog clears in {recovery_days} days at 130% surge capacity. "
         f"Market note: {rate_note}."
     )
@@ -268,7 +311,7 @@ SIMULATE_SPEC = ToolSpec(
         "properties": {
             "event_type": {
                 "type": "string",
-                "enum": ["typhoon_hkg_closure", "port_congestion_yantian"],
+                "enum": ["typhoon_hkg_closure", "port_congestion_yantian", "border_congestion_szbp"],
             },
             "duration_hours": {"type": "integer", "minimum": 6, "maximum": 240},
             "severity": {"type": "integer", "minimum": 1, "maximum": 5},

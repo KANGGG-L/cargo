@@ -120,6 +120,50 @@ class OceanRateWeekly(Base):
     )
 
 
+class SeaKpiWeekly(Base):
+    """Weekly feeder-barge performance per corridor — sea's counterpart to the
+    air lane daily KPI, so ocean operations get first-class metrics too."""
+
+    __tablename__ = "fact_sea_kpi_weekly"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    week_start_date: Mapped[str] = mapped_column(String(10))
+    feeder_corridor: Mapped[str] = mapped_column(String(30))
+    scheduled_sailings: Mapped[int] = mapped_column(Integer)
+    completed_sailings: Mapped[int] = mapped_column(Integer)
+    cancelled_sailings: Mapped[int] = mapped_column(Integer)
+    on_time_departure_rate: Mapped[float] = mapped_column(Float)  # dep within 240 min
+    avg_transit_hours: Mapped[float] = mapped_column(Float)
+    slot_utilization: Mapped[float] = mapped_column(Float)  # 0-1
+    backlog_teu: Mapped[float] = mapped_column(Float)
+
+    __table_args__ = (
+        Index("ix_seakpi_corridor_week", "feeder_corridor", "week_start_date"),
+    )
+
+
+class TruckKpiDaily(Base):
+    """Daily cross-border truck performance per GBA checkpoint — the road
+    counterpart of the air lane KPI (Shenzhen Bay / Huanggang / Wenjindu)."""
+
+    __tablename__ = "fact_truck_kpi_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    report_date: Mapped[str] = mapped_column(String(10))
+    checkpoint: Mapped[str] = mapped_column(String(12))  # SZBP | HGA | WJD
+    scheduled_trips: Mapped[int] = mapped_column(Integer)
+    completed_trips: Mapped[int] = mapped_column(Integer)
+    cancelled_trips: Mapped[int] = mapped_column(Integer)
+    on_time_arrival_rate: Mapped[float] = mapped_column(Float)  # within 60 min
+    avg_crossing_minutes: Mapped[float] = mapped_column(Float)
+    queue_backlog_trucks: Mapped[float] = mapped_column(Float)
+    avg_cost_per_tonne_usd: Mapped[float] = mapped_column(Float)
+
+    __table_args__ = (
+        Index("ix_truckkpi_checkpoint_date", "checkpoint", "report_date"),
+    )
+
+
 class RateCard(Base):
     __tablename__ = "fact_rate_cards"
 

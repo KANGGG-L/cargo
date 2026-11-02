@@ -57,9 +57,14 @@ pnpm install && pnpm build && pnpm start   # http://localhost:3000
                   │ SQLAlchemy / 只读 sqlite3(mode=ro)
 ┌─ SQLite ────────▼─────────────────────────────────────┐
 │  星型模式:fact_shipment_legs(mode=SEA/AIR/TRUCK)      │
-│  + 4 张事实表 + 2 张维度表 + 2 张公开宏观数据表           │
+│  三模态一级 KPI:fact_air_kpi_daily(航线×日)            │
+│    fact_sea_kpi_weekly(驳船走廊×周)                     │
+│    fact_truck_kpi_daily(口岸×日)                        │
+│  + 费率卡 / 扰动事件 / 公开宏观数据表                     │
 └───────────────────────────────────────────────────────┘
 ```
+
+**三模态对等**:空运(台风)、陆运(深圳湾口岸拥堵)、海运(盐田港拥堵)各有一级 KPI 序列、各自的异常剧情与专属诊断/模拟场景——这不是一个空运仪表盘。
 
 关键设计决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),指标口径见 [docs/DATA_DICTIONARY.md](docs/DATA_DICTIONARY.md),面试演示剧本见 [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)。
 
@@ -68,8 +73,8 @@ pnpm install && pnpm build && pnpm start   # http://localhost:3000
 - **只读 SQL 防火墙**(三层):sqlglot AST 校验(单语句、纯 SELECT、表白名单)+ LIMIT 强制钳制 + SQLite `mode=ro` 硬兜底 —— LLM 生成的 SQL 一律过闸
 - **模态无关的数据模型**:运营事实按"段"存储并带 `transport_mode` 字段,空运/海运/陆运叙事共用同一 schema,切换业务线零迁移
 - **mock/live 双模式 LLM**:同一事件接口;mock 用 df 加权匹配语义层 verified few-shot,语言是剧本、数据是真的
-- **确定性合成数据**:seed=42 字节级可复现;延误级联(驳船晚点 → 脱班改签 → 端到端延误)有物理一致性约束
-- **29 项测试**:防火墙攻击向量、三异常剧情存在性断言、引用完整性、模拟确定性、报价语义
+- **确定性合成数据**:seed=42 字节级可复现;延误级联(驳船/卡车晚点 → 脱班改签 → 端到端延误)有物理一致性约束
+- **33 项测试**:防火墙攻击向量、四个异常剧情存在性断言、三模态 KPI 对等、引用完整性、模拟确定性、报价语义
 
 ## 数据诚实声明
 

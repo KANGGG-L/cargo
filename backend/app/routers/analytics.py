@@ -38,6 +38,12 @@ def overview(db: Session = Depends(get_db)):
                   AND air.transport_mode = 'AIR' AND air.origin_facility = 'HKG'
                 WHERE feed.destination_facility = 'HKG'
                   AND feed.leg_sequence < air.leg_sequence) AS avg_dwell_hours,
+              (SELECT ROUND(100.0 * SUM(CASE WHEN transport_mode = 'SEA' AND delay_minutes <= 240 THEN 1 ELSE 0 END)
+                    / SUM(CASE WHEN transport_mode = 'SEA' THEN 1 END), 1)
+                 FROM fact_shipment_legs) AS sea_otp_pct,
+              (SELECT ROUND(100.0 * SUM(CASE WHEN transport_mode = 'TRUCK' AND delay_minutes <= 60 THEN 1 ELSE 0 END)
+                    / SUM(CASE WHEN transport_mode = 'TRUCK' THEN 1 END), 1)
+                 FROM fact_shipment_legs) AS truck_otp_pct,
               (SELECT COUNT(*) FROM dim_shipments) AS total_shipments,
               (SELECT ROUND(SUM(total_chargeable_weight_kg) / 1000.0, 0) FROM dim_shipments) AS total_tonnes,
               (SELECT ROUND(SUM(contracted_revenue_usd) / 1000000.0, 2) FROM dim_shipments) AS total_revenue_musd,
@@ -96,6 +102,35 @@ def trends(db: Session = Depends(get_db)):
         )
     ).mappings().all()
 
+    daily_truck = db.execute(
+        text(
+            """
+            SELECT report_date AS date,
+                   ROUND(AVG(on_time_arrival_rate) * 100.0, 1) AS truck_otp_pct,
+                   ROUND(AVG(avg_crossing_minutes), 0) AS avg_crossing_minutes,
+                   ROUND(AVG(queue_backlog_trucks), 0) AS avg_backlog_trucks
+            FROM fact_truck_kpi_daily
+            GROUP BY report_date
+            ORDER BY report_date
+            """
+        )
+    ).mappings().all()
+
+    weekly_sea = db.execute(
+        text(
+            """
+            SELECT week_start_date AS week,
+                   feeder_corridor AS corridor,
+                   ROUND(on_time_departure_rate * 100.0, 1) AS sea_otp_pct,
+                   ROUND(avg_transit_hours, 1) AS avg_transit_hours,
+                   cancelled_sailings,
+                   ROUND(backlog_teu, 0) AS backlog_teu
+            FROM fact_sea_kpi_weekly
+            ORDER BY week_start_date
+            """
+        )
+    ).mappings().all()
+
     rates = db.execute(
         text(
             """
@@ -112,6 +147,8 @@ def trends(db: Session = Depends(get_db)):
     return {
         "daily": [dict(r) for r in daily],
         "monthly": [dict(r) for r in monthly],
+        "daily_truck": [dict(r) for r in daily_truck],
+        "weekly_sea": [dict(r) for r in weekly_sea],
         "weekly_rates": [dict(r) for r in rates],
     }
 
@@ -173,9 +210,25 @@ def network(db: Session = Depends(get_db)):
         )
     ).mappings().all()
 
+    truck_checkpoints = db.execute(
+        text(
+            """
+            SELECT checkpoint,
+                   ROUND(AVG(on_time_arrival_rate) * 100.0, 1) AS truck_otp_pct,
+                   ROUND(AVG(avg_crossing_minutes), 0) AS avg_crossing_minutes,
+                   ROUND(AVG(queue_backlog_trucks), 0) AS avg_backlog_trucks,
+                   SUM(cancelled_trips) AS cancelled_trips
+            FROM fact_truck_kpi_daily
+            GROUP BY checkpoint
+            ORDER BY truck_otp_pct DESC
+            """
+        )
+    ).mappings().all()
+
     return {
         "mode_split": [dict(r) for r in mode_split],
         "chain_mix": [dict(r) for r in chain_mix],
         "air_lanes": [dict(r) for r in air_lanes],
         "feeder_ports": [dict(r) for r in feeder_ports],
+        "truck_checkpoints": [dict(r) for r in truck_checkpoints],
     }

@@ -34,6 +34,11 @@ YANTIAN_END = datetime(2026, 3, 15, 23, 59, 59)
 ORD_ANOMALY_START = datetime(2026, 6, 1, 0, 0, 0)
 ORD_ANOMALY_END = datetime(2026, 6, 30, 23, 59, 59)
 
+# Land-side story: Shenzhen Bay checkpoint congestion (cross-border trucks)
+TRUCK_START = datetime(2025, 11, 10, 0, 0, 0)
+TRUCK_END = datetime(2025, 11, 24, 23, 59, 59)
+TRUCK_CHECKPOINTS = ["SZBP", "HGA", "WJD"]
+
 
 def generate_customers():
     customers = []
@@ -212,6 +217,9 @@ def generate_operational_data(customers):
                 if random.random() > 0.12
                 else round(random.uniform(45.0, 180.0), 1)
             )
+            # Shenzhen Bay congestion: SZX feeder trucks queue 2-6 h extra
+            if orig == "SZX" and TRUCK_START <= planned_dep <= TRUCK_END:
+                delay_min = round(random.uniform(120.0, 360.0), 1)
             actual_dep = planned_dep + timedelta(
                 minutes=random.uniform(0, 20)
             )
@@ -555,6 +563,89 @@ def generate_ocean_rates():
     return records
 
 
+def generate_sea_kpis():
+    """Weekly feeder performance per corridor — sea's first-class KPI series."""
+    corridors = [
+        "PRD_FEEDER_HKG",
+        "YANTIAN_FEEDER_HKG",
+        "NINGBO_COASTAL_HKG",
+        "SHANGHAI_COASTAL_HKG",
+    ]
+    records = []
+    current_date = START_DATE.date()
+    while current_date.weekday() != 0:  # weeks start Monday
+        current_date += timedelta(days=1)
+
+    while current_date <= END_DATE.date():
+        in_yantian = YANTIAN_START.date() <= current_date <= YANTIAN_END.date()
+        for cor in corridors:
+            sched = random.randint(4, 9)
+            canc = int(sched * random.uniform(0.15, 0.35)) if (in_yantian and cor == "YANTIAN_FEEDER_HKG") else (1 if random.random() < 0.04 else 0)
+            comp = max(0, sched - canc)
+            if in_yantian and cor == "YANTIAN_FEEDER_HKG":
+                otp = round(random.uniform(0.42, 0.60), 3)
+                transit = round(random.uniform(52.0, 68.0), 1)  # baseline ~30
+                backlog = round(random.uniform(180.0, 320.0), 1)
+            else:
+                otp = round(random.uniform(0.84, 0.94), 3)
+                transit = round(random.uniform(26.0, 36.0), 1)
+                backlog = round(random.uniform(20.0, 80.0), 1)
+            records.append(
+                {
+                    "week_start_date": current_date.strftime("%Y-%m-%d"),
+                    "feeder_corridor": cor,
+                    "scheduled_sailings": sched,
+                    "completed_sailings": comp,
+                    "cancelled_sailings": canc,
+                    "on_time_departure_rate": otp,
+                    "avg_transit_hours": transit,
+                    "slot_utilization": round(random.uniform(0.72, 0.95), 3),
+                    "backlog_teu": backlog,
+                }
+            )
+        current_date += timedelta(days=7)
+    return records
+
+
+def generate_truck_kpis():
+    """Daily cross-border truck performance per GBA checkpoint."""
+    records = []
+    current_date = START_DATE.date()
+    end_date = END_DATE.date()
+
+    while current_date <= end_date:
+        in_congestion = TRUCK_START.date() <= current_date <= TRUCK_END.date()
+        for cp in TRUCK_CHECKPOINTS:
+            sched = random.randint(14, 26)
+            if in_congestion and cp == "SZBP":
+                canc = int(sched * random.uniform(0.10, 0.22))
+                comp = sched - canc
+                otp = round(random.uniform(0.48, 0.66), 3)
+                crossing = round(random.uniform(150.0, 260.0), 1)  # baseline ~45
+                backlog = round(random.uniform(120.0, 220.0), 1)
+            else:
+                canc = 1 if random.random() < 0.03 else 0
+                comp = sched - canc
+                otp = round(random.uniform(0.84, 0.94), 3)
+                crossing = round(random.uniform(35.0, 55.0), 1)
+                backlog = round(random.uniform(5.0, 25.0), 1)
+            records.append(
+                {
+                    "report_date": current_date.strftime("%Y-%m-%d"),
+                    "checkpoint": cp,
+                    "scheduled_trips": sched,
+                    "completed_trips": comp,
+                    "cancelled_trips": canc,
+                    "on_time_arrival_rate": otp,
+                    "avg_crossing_minutes": crossing,
+                    "queue_backlog_trucks": backlog,
+                    "avg_cost_per_tonne_usd": round(random.uniform(38.0, 55.0), 2),
+                }
+            )
+        current_date += timedelta(days=1)
+    return records
+
+
 def generate_rate_cards():
     records = []
     zones = [
@@ -617,6 +708,17 @@ def generate_disruption_events():
             "primary_location": "HKG",
             "description": "Super Typhoon simulated strike directly impacting HKG apron and cargo terminal operations with extensive flight cancellations.",
             "target_metric_impact": "air_otp_drop_below_50_backlog_spike",
+        },
+        {
+            "event_id": "EVT-2025-002",
+            "event_code": "SHENZHEN_BAY_CONGESTION_2025_11",
+            "event_category": "BORDER_CONGESTION",
+            "affected_mode": "TRUCK",
+            "start_timestamp": "2025-11-10T00:00:00Z",
+            "end_timestamp": "2025-11-24T23:59:59Z",
+            "primary_location": "SZBP",
+            "description": "Enhanced inspection and holiday surge at Shenzhen Bay checkpoint stall cross-border feeder trucks; queue backlog triples and SZX feeder legs miss planned HKG connections.",
+            "target_metric_impact": "truck_otp_below_70_crossing_time_triple",
         },
         {
             "event_id": "EVT-2026-002",
@@ -747,6 +849,40 @@ def main():
             "terminal_handling_charge_usd",
         ],
         ocean_rates,
+    )
+
+    sea_kpis = generate_sea_kpis()
+    save_csv(
+        "fact_sea_kpi_weekly.csv",
+        [
+            "week_start_date",
+            "feeder_corridor",
+            "scheduled_sailings",
+            "completed_sailings",
+            "cancelled_sailings",
+            "on_time_departure_rate",
+            "avg_transit_hours",
+            "slot_utilization",
+            "backlog_teu",
+        ],
+        sea_kpis,
+    )
+
+    truck_kpis = generate_truck_kpis()
+    save_csv(
+        "fact_truck_kpi_daily.csv",
+        [
+            "report_date",
+            "checkpoint",
+            "scheduled_trips",
+            "completed_trips",
+            "cancelled_trips",
+            "on_time_arrival_rate",
+            "avg_crossing_minutes",
+            "queue_backlog_trucks",
+            "avg_cost_per_tonne_usd",
+        ],
+        truck_kpis,
     )
 
     rate_cards = generate_rate_cards()

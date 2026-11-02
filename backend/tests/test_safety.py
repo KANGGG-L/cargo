@@ -70,11 +70,17 @@ def test_subquery_table_whitelist_enforced():
         )
 
 
-def test_query_data_tool_end_to_end():
-    """Full tool path in mock mode: question → scripted SQL → real rows."""
+def test_query_data_tool_end_to_end(monkeypatch):
+    """Full tool path in MOCK mode: question → scripted SQL → real rows.
+
+    Forced to mock so the suite never depends on a live LLM key or network.
+    """
     import asyncio
 
     from app.agent.tools import tool_query_data
+    from app.llm.mock import MockLLM
+
+    monkeypatch.setattr("app.agent.tools.get_llm", lambda: MockLLM())
 
     result = asyncio.run(
         tool_query_data(

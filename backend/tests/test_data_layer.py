@@ -222,7 +222,7 @@ def test_ord_yield_dips_during_pricing_error(db_conn):
 
 def test_semantic_layer_metrics(db_conn):
     cursor = db_conn.cursor()
-    assert len(METRIC_DEFINITIONS) == 8, f"Expected 8 metrics, got {len(METRIC_DEFINITIONS)}"
+    assert len(METRIC_DEFINITIONS) == 10, f"Expected 10 metrics, got {len(METRIC_DEFINITIONS)}"
     for key, metric in METRIC_DEFINITIONS.items():
         sql = metric["canonical_sql"]
         cursor.execute(sql)

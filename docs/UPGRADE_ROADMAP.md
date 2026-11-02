@@ -138,7 +138,8 @@ dim_milestone_codes、fact_milestones_plan、fact_milestone_events、fact_alert_
 | v1.0-B 计划链路 + 经验分位数 ETA | ✅ 已交付(predict_eta 第六工具) | d5bdf3b |
 | v1.0-C 运营时钟(时间驱动事件管线) | ✅ 已交付(超出现计划) | 6cf2221 |
 | v1.0-D CI + Dockerfile + compose | ✅ 已交付 | 2f454c0 |
-| v1.0 真实 ADS-B/AIS 接入、多租户、Postgres | 未做(接口契约已备:模拟器与 FSU 解析层可直换) | — |
+| R3 清扫(AR 账龄/报关单/webhook 通道/地图态势层/ETA 按钮/overdue 标识/访问日志) | ✅ 已交付 | 617806b |
+| v1.0 真实 ADS-B/AIS 接入、多租户、Postgres | 未做(接口契约已备:模拟器与 FSU 解析层可直换;Postgres/多租户缓期理由:SQLite 单文件是作品集可复现性的刻意取舍) | — |
 
 ## 面试叙事映射(升级后)
 

@@ -65,7 +65,9 @@ def test_clock_tick_emits_milestones_and_alerts():
         clocked = conn.execute(
             "SELECT COUNT(*) FROM fact_milestone_events WHERE source = 'clock'"
         ).fetchone()[0]
-        assert clocked == result["emitted"]
+        # >= not ==: a live server's clock ticker may fire concurrently with the
+        # test (multi-writer DB) — this tick's events must be a subset.
+        assert clocked >= result["emitted"]
         # every clock event anchors to a plan (no orphans)
         orphans = conn.execute(
             """

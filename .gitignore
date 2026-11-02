@@ -13,3 +13,4 @@ out/
 
 # keep data dirs
 !data/**/*.gitkeep
+data/documents/

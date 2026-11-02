@@ -585,6 +585,8 @@ def generate_rate_cards():
                 continue
             if mode != "AIR" and "+1000" in wb:
                 continue
+            if mode != "TRUCK" and wb == "PER_TRUCK":
+                continue
 
             records.append(
                 {

@@ -86,7 +86,44 @@ class MockLLM:
         return json.dumps({"sql": shot["sql"], "chart": "auto"})
 
 
-MOCK_PLANS: list[dict[str, Any]] = [
+MOCK_PLANS: list[dict[str, Any]] = [{
+        "id": "diagnose",
+        "keywords": ["why did", "anomaly", "diagnose", "what's wrong", "deviation"],
+        "steps": [
+            {
+                "tool": "diagnose_anomaly",
+                "args": {"scope": "sea", "anchor_date": "2026-03-20"},
+            }
+        ],
+        "answer": (
+            "The sea-feeder scan (as of 2026-03-20) flags Yantian: average feeder "
+            "delay jumped from a ~3 h baseline to ~17 h, and the disruption log "
+            "matches it to EVT-2026-002 (Yantian congestion, Mar 1-15).\n\n"
+            "Improvement actions: (1) automate a weekly baseline-vs-actual scan so "
+            "these surface within days, not months; (2) gate new contract rates "
+            "against a cost floor at upload; (3) tie the feeder booking system to a "
+            "congestion index that reroutes Sea-Air cargo proactively."
+        ),
+    },
+    {
+        "id": "simulate",
+        "keywords": ["simulate", "what if", "what-if", "scenario", "typhoon closure"],
+        "steps": [
+            {
+                "tool": "simulate_disruption",
+                "args": {"event_type": "typhoon_hkg_closure", "duration_hours": 48, "severity": 5},
+            }
+        ],
+        "answer": (
+            "A 48-hour full HKG closure (severity 5) grounds ~28 freighter "
+            "departures. Backlog peaks at ~122 t (about half a day of throughput), "
+            "putting ~$0.3M of revenue at risk, and the model clears it in ~2 days "
+            "at 130% surge capacity after reopening.\n\n"
+            "Playbook: freeze non-urgent bookings 24 h before landfall, secure "
+            "extra freighter capacity for the 48 h after reopening, and keep a "
+            "pre-approved customer communication list for priority cargo."
+        ),
+    },
     {
         "id": "typhoon",
         "keywords": ["typhoon", "september 2025", "sep 2025"],
@@ -146,6 +183,23 @@ MOCK_PLANS: list[dict[str, Any]] = [
             "Recommendations: add a rate-floor validation against cost-per-kg at "
             "contract upload time, and alert on any lane whose trailing 7-day margin "
             "turns negative before the exposure compounds."
+        ),
+    },
+    {
+        "id": "quote",
+        "keywords": ["quote", "how much to ship", "rate for", "book", "ship 500 kg"],
+        "steps": [
+            {
+                "tool": "quote_booking",
+                "args": {"origin": "CNYTN", "destination": "LAX", "weight_kg": 500, "mode": "auto"},
+            }
+        ],
+        "answer": (
+            "For 500 kg from Yantian to LAX on the Sea-Air chain: feeder barge "
+            "Yantian→HKG (~1.3 d) plus a freighter HKG→LAX (~1.2 d flight, total "
+            "door-to-airport ~2 d including handling). The rate card prices the air "
+            "leg at the +300KG break; combined quote lands in the low four figures "
+            "USD — see the breakdown card above for exact numbers from the tariff."
         ),
     },
     {

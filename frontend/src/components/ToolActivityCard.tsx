@@ -12,6 +12,19 @@ export interface ToolPayload {
   row_count?: number;
   chart?: { type: "bar" | "line" | "pie"; x_key: string; y_keys: string[] } | null;
   error?: string;
+  /* diagnose_anomaly */
+  anchor?: string;
+  findings?: Record<string, unknown>[];
+  overlapping_events?: Record<string, unknown>[];
+  /* simulate_disruption */
+  scenario?: string;
+  recovery_curve?: { day: string; backlog_tonnes: number }[];
+  affected_air_legs?: number;
+  revenue_at_risk_musd?: number;
+  /* quote_booking */
+  legs?: Record<string, unknown>[];
+  total_usd?: number;
+  estimated_transit_days?: number;
 }
 
 export interface ToolEvent {
@@ -108,7 +121,10 @@ export default function ToolActivityCard({ ev }: { ev: ToolEvent }) {
           {option && (
             <ReactECharts option={option} style={{ height: 220, width: "100%" }} notMerge />
           )}
-          {!option && ev.payload?.columns && ev.payload.columns.length > 0 && (
+          {ev.payload?.recovery_curve && <RecoveryChart ev={ev} />}
+          {ev.payload?.findings && <FindingsList ev={ev} />}
+          {ev.payload?.legs && !option && <QuoteBreakdown ev={ev} />}
+          {!option && !ev.payload?.recovery_curve && !ev.payload?.findings && !ev.payload?.legs && (
             <DataTable ev={ev} />
           )}
         </div>
@@ -144,6 +160,86 @@ function DataTable({ ev }: { ev: ToolEvent }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function RecoveryChart({ ev }: { ev: ToolEvent }) {
+  const curve = ev.payload!.recovery_curve!;
+  return (
+    <div className="rounded border border-slate-800/60 p-1">
+      <div className="px-2 pt-1 text-[11px] text-slate-500">
+        Backlog recovery curve (130% surge capacity after reopening)
+      </div>
+      <ReactECharts
+        style={{ height: 200, width: "100%" }}
+        notMerge
+        option={{
+          grid: { left: 55, right: 20, top: 15, bottom: 30 },
+          xAxis: { type: "category", data: curve.map((c) => c.day), ...DARK_AXIS },
+          yAxis: { type: "value", name: "tonnes", ...DARK_AXIS },
+          series: [
+            {
+              type: "bar",
+              itemStyle: { color: "#f59e0b", borderRadius: [3, 3, 0, 0] },
+              data: curve.map((c) => c.backlog_tonnes),
+            },
+          ],
+          tooltip: { trigger: "axis" },
+        }}
+      />
+    </div>
+  );
+}
+
+function FindingsList({ ev }: { ev: ToolEvent }) {
+  const { findings, overlapping_events, anchor } = ev.payload!;
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[11px] text-slate-500">As of {anchor}</div>
+      {(findings ?? []).map((f, i) => (
+        <div key={i} className="rounded border border-amber-900/50 bg-amber-950/20 px-2.5 py-1.5 text-[11px] text-amber-200">
+          <span className="font-semibold">{String(f.metric)}</span>
+          {" · "}
+          {String(f.route_lane ?? f.port ?? f.dest)}
+          {": "}
+          {String(f.baseline_otp ?? f.baseline_delay_h ?? f.baseline_margin)}
+          {" → "}
+          {String(f.recent_otp ?? f.recent_delay_h ?? f.recent_margin)}
+        </div>
+      ))}
+      {(overlapping_events ?? []).map((e, i) => (
+        <div key={`e${i}`} className="rounded border border-rose-900/50 bg-rose-950/20 px-2.5 py-1.5 text-[11px] text-rose-200">
+          {String(e.event_code)} · {String(e.primary_location)} ·{" "}
+          {String(e.start_timestamp).slice(0, 10)} → {String(e.end_timestamp).slice(0, 10)}
+        </div>
+      ))}
+      {(!findings || findings.length === 0) && (
+        <div className="text-[11px] text-emerald-400">No deviations beyond threshold.</div>
+      )}
+    </div>
+  );
+}
+
+function QuoteBreakdown({ ev }: { ev: ToolEvent }) {
+  const { legs, total_usd, estimated_transit_days } = ev.payload!;
+  return (
+    <div className="space-y-1.5">
+      {(legs ?? []).map((l, i) => (
+        <div key={i} className="flex items-center justify-between rounded border border-slate-800/60 bg-black/20 px-2.5 py-1.5 text-[11px] text-slate-300">
+          <span>
+            <span className="font-semibold uppercase text-cyan-300">{String(l.mode)}</span>{" "}
+            {String(l.origin)} → {String(l.dest)}
+          </span>
+          <span>
+            ${String(l.charge_usd)} · {String(l.weight_break)} · {String(l.avg_transit_days)} d
+          </span>
+        </div>
+      ))}
+      <div className="flex justify-between px-2.5 pt-1 text-xs font-semibold text-slate-200">
+        <span>Total · est. {String(estimated_transit_days)} days</span>
+        <span className="text-cyan-300">${String(total_usd)}</span>
+      </div>
     </div>
   );
 }

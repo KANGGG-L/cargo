@@ -73,12 +73,13 @@ def test_truck_kpi_szbp_congestion_window():
 
 
 def test_simulate_border_congestion_is_deterministic():
-    a = asyncio.run(tool_simulate_disruption("border_congestion_szbp", 72, 4))
-    b = asyncio.run(tool_simulate_disruption("border_congestion_szbp", 72, 4))
+    a = asyncio.run(tool_simulate_disruption("border_congestion_szbp", 240, 4))
+    b = asyncio.run(tool_simulate_disruption("border_congestion_szbp", 240, 4))
     assert a.payload == b.payload
     p = a.payload
-    assert p["mode"] == "TRUCK"
-    assert p["affected_legs"] > 0 and p["recovery_curve"][-1]["backlog_tonnes"] == 0.0
+    assert p["affected_shipments"] > 0
+    assert p["delay_quantiles_min"]["p95"] > 0
+    assert p["recovery_curve"][-1]["backlog_tonnes"] == 0.0
 
 
 def test_diagnose_quiet_period_is_clean():
@@ -87,23 +88,29 @@ def test_diagnose_quiet_period_is_clean():
 
 
 def test_simulation_is_deterministic_and_positive():
-    a = asyncio.run(tool_simulate_disruption("typhoon_hkg_closure", 48, 5))
-    b = asyncio.run(tool_simulate_disruption("typhoon_hkg_closure", 48, 5))
+    a = asyncio.run(tool_simulate_disruption("typhoon_hkg_closure", 96, 5))
+    b = asyncio.run(tool_simulate_disruption("typhoon_hkg_closure", 96, 5))
     assert a.payload == b.payload, "simulation must be deterministic"
     p = a.payload
-    assert p["affected_legs"] > 0
-    assert p["backlog_tonnes"] > 0
-    assert p["revenue_at_risk_musd"] > 0
-    assert p["recovery_days"] >= 1
-    assert p["recovery_curve"][0]["backlog_tonnes"] == p["backlog_tonnes"]
+    assert p["affected_shipments"] > 0
+    assert p["cancelled_air_legs"] > 0
+    assert p["revenue_at_risk_usd"] > 0
+    q = p["delay_quantiles_min"]
+    assert q["p50"] <= q["p80"] <= q["p95"] <= q["max"], q
     assert p["recovery_curve"][-1]["backlog_tonnes"] == 0.0
+    assert p["model"] == "chain-fifo-v1"
 
 
 def test_yantian_congestion_scenario_scales_with_severity():
-    low = asyncio.run(tool_simulate_disruption("port_congestion_yantian", 48, 1))
-    high = asyncio.run(tool_simulate_disruption("port_congestion_yantian", 48, 5))
-    assert high.payload["avg_delay_hours"] > low.payload["avg_delay_hours"]
-    assert high.payload["recovery_curve"][0]["backlog_tonnes"] >= low.payload["recovery_curve"][0]["backlog_tonnes"]
+    low = asyncio.run(tool_simulate_disruption("port_congestion_yantian", 240, 1))
+    high = asyncio.run(tool_simulate_disruption("port_congestion_yantian", 240, 5))
+    assert (
+        high.payload["delay_quantiles_min"]["p95"]
+        >= low.payload["delay_quantiles_min"]["p95"]
+    )
+    assert (
+        high.payload["revenue_at_risk_usd"] >= low.payload["revenue_at_risk_usd"]
+    )
 
 
 def test_quote_sea_air_chain_sums_legs():

@@ -218,90 +218,70 @@ DIAGNOSE_SPEC = ToolSpec(
 
 async def tool_simulate_disruption(
     event_type: str = "typhoon_hkg_closure",
-    duration_hours: int = 48,
+    duration_hours: int | None = None,
     severity: int = 4,
+    start_date: str | None = None,
 ) -> ToolResult:
+    from datetime import datetime
+
+    from app.simulation.chain import Scenario, run_chain_simulation
+
+    if event_type not in SCENARIO_WINDOWS:
+        return ToolResult(
+            summary="unknown scenario",
+            payload={"error": f"unknown scenario {event_type}"},
+            llm_digest=f"Unknown scenario {event_type}. Options: {list(SCENARIO_WINDOWS)}.",
+        )
+    default_start, default_hours = SCENARIO_WINDOWS[event_type]
+    start_s = start_date or default_start
+    duration = duration_hours or default_hours
+    start = datetime.strptime(start_s[:19], "%Y-%m-%dT%H:%M:%S")
+
     conn = _ro()
     try:
+        result = run_chain_simulation(
+            conn, Scenario(event_type, start, duration, severity)
+        )
         horizon = _data_horizon(conn)
-        stats = conn.execute(
-            """
-            SELECT
-              (SELECT COUNT(*) FROM fact_shipment_legs
-                WHERE transport_mode = 'AIR' AND origin_facility = 'HKG') AS total_air_legs,
-              (SELECT julianday(MAX(planned_depart_ts)) - julianday(MIN(planned_depart_ts))
-                 FROM fact_shipment_legs WHERE transport_mode = 'AIR') AS span_days,
-              (SELECT SUM(total_chargeable_weight_kg) FROM dim_shipments) AS total_weight_kg,
-              (SELECT SUM(contracted_revenue_usd) FROM dim_shipments) AS total_revenue_usd,
-              (SELECT COUNT(*) FROM dim_shipments) AS total_shipments,
-              (SELECT AVG(scheduled_trips) FROM fact_truck_kpi_daily) AS avg_daily_truck_trips
-            """
-        ).fetchone()
-        total_air_legs, span_days, total_weight_kg, total_revenue, total_shipments, avg_daily_truck_trips = stats
-        span_days = max(span_days or 548, 1)
-        legs_per_day = total_air_legs / span_days
-        tonnes_per_day = (total_weight_kg / span_days) / 1000.0
-        revenue_per_tonne = total_revenue / (total_weight_kg / 1000.0)
-        avg_daily_truck_trips = avg_daily_truck_trips or 50.0
-
-        if event_type == "port_congestion_yantian":
-            uplift = 1.0 + 0.08 * severity
-            affected_legs = int(legs_per_day * 0.4 * duration_hours / 24 * 2)  # 40% of feeders touch CNYTN
-            delay_hours = round(12 + 14 * severity, 1)
-            rate_note = f"Yantian feeder spot rates estimated +{int((uplift - 1) * 100)}% while congestion lasts"
-            mode = "SEA"
-        elif event_type == "border_congestion_szbp":
-            # Cross-border truck congestion at Shenzhen Bay: SZX feeder trucks queue,
-            # missed HKG connections cascade into the air network downstream.
-            affected_legs = int(avg_daily_truck_trips / 3 * duration_hours / 24)  # ~1/3 of trips use SZBP
-            delay_hours = round(2 + 1.2 * severity, 1)
-            rate_note = (
-                "Trucking spot cost rises 10-25% (queue hours are unpaid but demurrage at factories accrues); "
-                "downstream air legs absorb the missed connections as next-day rebooking"
-            )
-            mode = "TRUCK"
-        else:  # typhoon_hkg_closure (default)
-            affected_legs = int(legs_per_day * duration_hours / 24)
-            delay_hours = round(18 + 16 * severity, 1)
-            rate_note = "spot air rates typically spike 15-30% after reopening as backlog clears"
-            mode = "AIR"
-
-        backlog_tonnes = round(tonnes_per_day * duration_hours / 24 * (1 + 0.15 * (severity - 3)), 1)
-        revenue_at_risk_musd = round(backlog_tonnes * revenue_per_tonne / 1e6, 2)
-        surge_capacity = tonnes_per_day * 1.3  # post-event recovery assumption
-        recovery_days = max(1, int(backlog_tonnes / surge_capacity + 0.999))
-
-        curve, remaining = [], backlog_tonnes
-        for day in range(recovery_days + 1):
-            curve.append({"day": f"D+{day}", "backlog_tonnes": round(remaining, 1)})
-            remaining = max(0.0, remaining - surge_capacity)
     finally:
         conn.close()
 
     payload = {
-        "scenario": event_type,
-        "mode": mode,
-        "duration_hours": duration_hours,
-        "severity": severity,
-        "affected_legs": affected_legs,
-        "avg_delay_hours": delay_hours,
-        "backlog_tonnes": backlog_tonnes,
-        "revenue_at_risk_musd": revenue_at_risk_musd,
-        "recovery_days": recovery_days,
-        "recovery_curve": curve,
+        **result,
         "as_of_data_horizon": horizon,
+        # frontend compatibility: recovery curve = backlog by day
+        "recovery_curve": result["backlog_tonnes_by_day"],
+        "affected_legs": result["cancelled_air_legs"],
     }
+    q = result["delay_quantiles_min"]
     digest = (
-        f"Simulation ({event_type}, {duration_hours}h, severity {severity}/5): "
-        f"{affected_legs} {mode.lower()} legs affected, avg delay {delay_hours} h, backlog {backlog_tonnes} t, "
-        f"revenue at risk ${revenue_at_risk_musd}M, backlog clears in {recovery_days} days at 130% surge capacity. "
-        f"Market note: {rate_note}."
+        f"Chain simulation ({event_type}, {duration} h, severity {severity}/5): "
+        f"{result['affected_shipments']} shipments affected, "
+        f"{result['cancelled_air_legs']} air departures cancelled, "
+        f"{result['held_feeder_legs']} feeder legs held at the hub; "
+        f"re-accommodation delay P50 {q['p50']} min / P80 {q['p80']} / P95 {q['p95']}; "
+        f"revenue at risk ${result['revenue_at_risk_usd']:,.0f}. "
+        f"Model: {result['model']} - FIFO re-accommodation, capacity-constrained recovery. "
+        + " ".join(result["notes"][-2:])
     )
     return ToolResult(
-        summary=f"{affected_legs} legs · ${revenue_at_risk_musd}M at risk · {recovery_days}d recovery",
+        summary=(
+            f"{result['affected_shipments']} shipments · "
+            f"${result['revenue_at_risk_usd'] / 1e6:.2f}M at risk · "
+            f"P95 delay {q['p95'] / 60:.1f} h"
+        ),
         payload=payload,
         llm_digest=digest,
     )
+
+
+SCENARIO_WINDOWS = {
+    # planted disruption windows -> anchor the simulation on real history
+    "typhoon_hkg_closure": ("2025-09-15T00:00:00Z", 96),
+    "port_congestion_yantian": ("2026-03-01T00:00:00Z", 240),
+    "border_congestion_szbp": ("2025-11-10T00:00:00Z", 240),
+}
+
 
 
 SIMULATE_SPEC = ToolSpec(

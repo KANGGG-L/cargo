@@ -1,6 +1,8 @@
 # 面试演示剧本 v2(8 分钟,v0.2 功能全套)
 
-前置:`backend` 起 uvicorn(8000),`frontend` 起 `pnpm start`(3000)。无 API key 走 mock(剧本回放,数据真实执行);有 key 走 live。
+前置:面试前一天跑 `scripts/rebuild_demo.sh`(重建演示库到初态,seed=42 字节级可复现);`backend` 起 uvicorn(8000),`frontend` 起 `pnpm start`(3000)。
+
+> 本文出现的具体数值(794 张 OPEN、OTP 百分比等)在 seed=42 下可复现,但随运营时钟/演示操作会自然漂移——**讲解时以屏上实时数字为准**,每站附自验命令。
 
 ## 开场(30 秒)
 
@@ -17,12 +19,12 @@
 - 选一票 SEA_AIR_TRUCK 货:双轨里程碑条(计划 vs 实际 vs NOT REPORTED)
 - 逐段 trace(机/船/车牌号、成本、延误)
 - **Route Map**:三段航迹按模态着色,大圆线跨欧亚
-- 点 🔔 Subscribe:输入邮箱订阅该票的里程碑与延误告警
+- 点 Subscribe(POST /api/notifications/subscriptions,字段 `email`):输入邮箱订阅该票的里程碑与延误告警
 - 底部桑基:全网物流量汇聚 HKG 枢纽
 
 ## 第 3 站:告警工作台(`/alerts`)
 
-- 795 张 OPEN:R1 漏交付事件 / R2 漏到达 / R3 起飞延误 / R4 到达延误
+- OPEN 告警(R1 漏交付 / R2 漏到达 / R3 起飞延误 / R4 到达延误;数量以 `curl -s localhost:8000/api/alerts/summary` 实时为准)
 - 点 **Run rule scan**:幂等重扫(0 新增,证明不重复)
 - 任选一张 Acknowledge → Resolve:状态流转留痕
 - 下方发件箱:订阅产生的通知(PENDING → Dispatch → SENT)
@@ -31,14 +33,14 @@
 
 - Load dirty sample:含重复/乱序/未知代码/未知货件
 - Ingest:parsed 5 / ingested 0(全判重,幂等)——讲解 dedupe 与乱序策略
-- 现场补录:删掉样例里一行真实缺失事件重放 → ingested 1 → **对应缺失告警自动 RESOLVED**(回 /alerts 验证)
+- 现场补录:重放样例 → 若该缺失事件已在上次演示中补录,则 ingested 0(幂等即卖点);需重演高光就先跑 `scripts/rebuild_demo.sh` → ingested 1 → **对应缺失告警自动 RESOLVED**(回 /alerts 验证)
 
 ## 第 5 站:AI 分析师(`/agent`)
 
 1. `Why did truck OTP drop in November 2025?` → diagnose(truck, anchor 11-24)→ SZBP 84.7→60.8,匹配 EVT-2025-002
 2. `Show the HKG-ORD monthly gross margin in 2026` → 展开 SQL 工具卡,讲语义层 + 防火墙(可现场试 `DELETE` 被拒)
 3. `Simulate a 48h typhoon closure of HKG` → 确定性模拟:28 legs / $0.3M / 2 天恢复曲线
-4. 诊断后让 Agent **raise_alert**:回到 /alerts 看到新工单(source: agent)——分析闭环到执行
+4. 诊断后让 Agent **raise_alert**(mock 剧本第二拍自动触发):回到 /alerts 看到新工单(source: agent)——分析闭环到执行
 
 ## 收尾(30 秒)
 

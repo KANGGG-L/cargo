@@ -5,14 +5,18 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from app.auth import require_session
 from app.config import get_settings
 from app.documents import generator
 
-router = APIRouter(prefix="/api/documents", tags=["documents"])
+router = APIRouter(
+    prefix="/api/documents",
+    dependencies=[Depends(require_session)],
+    tags=["documents"])
 
 
 def _conn():
@@ -74,6 +78,29 @@ def generate_document(shipment_id: str, req: GenerateRequest):
         )
         conn.commit()
         return {"doc_id": doc_id, "doc_type": req.doc_type, "file": path.name, "eawb_status": eawb}
+    finally:
+        conn.close()
+
+
+@router.post("/{doc_id}/accept")
+def accept_awb(doc_id: str):
+    """e-AWB flow: FWB sent at generation, carrier confirmation marks accepted."""
+    conn = _conn()
+    try:
+        row = conn.execute(
+            "SELECT doc_type, eawb_status FROM dim_documents WHERE doc_id = ?", (doc_id,)
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="document not found")
+        if row["doc_type"] != "AWB":
+            raise HTTPException(status_code=409, detail="e-AWB status applies to AWB documents only")
+        if row["eawb_status"] != "sent":
+            raise HTTPException(status_code=409, detail=f"cannot accept from status {row['eawb_status']}")
+        conn.execute(
+            "UPDATE dim_documents SET eawb_status = 'accepted' WHERE doc_id = ?", (doc_id,)
+        )
+        conn.commit()
+        return {"doc_id": doc_id, "eawb_status": "accepted"}
     finally:
         conn.close()
 

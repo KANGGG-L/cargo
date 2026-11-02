@@ -3,18 +3,23 @@
 import sqlite3
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.auth import require_session
 from app.config import get_settings
 
-router = APIRouter(prefix="/api/settlement", tags=["settlement"])
+router = APIRouter(
+    prefix="/api/settlement",
+    dependencies=[Depends(require_session)],
+    tags=["settlement"])
 
 FUEL_RATE = 0.12
 THC_FLAT_USD = 180.0
-DEMURRAGE_USD_PER_TONNE_HOUR = 0.5
-DEMURRAGE_FREE_HOURS = 24
+DEMURRAGE_USD_PER_TEU_DAY = 35.0
+DEMURRAGE_FREE_DAYS = 1
 DEMURRAGE_CAP_USD = 500.0
+CBM_PER_TEU = 67.0
 
 
 def _conn():
@@ -53,25 +58,25 @@ def _compute_charge_lines(conn, shipment_id: str) -> list[dict]:
         {"charge_type": "thc", "amount_usd": THC_FLAT_USD, "basis": "terminal handling charge, flat"},
     ]
 
-    # demurrage: final-leg delay beyond free hours, per tonne-hour, capped
+    # demurrage: TEU-days beyond the free period on the final delivery leg
     final = conn.execute(
         """
-        SELECT l.delay_minutes, s.total_chargeable_weight_kg / 1000.0 AS weight_tonnes
+        SELECT l.delay_minutes, s.total_volume_cbm
         FROM fact_shipment_legs l JOIN dim_shipments s ON s.shipment_id = l.shipment_id
         WHERE l.shipment_id = ? ORDER BY l.leg_sequence DESC LIMIT 1
         """,
         (shipment_id,),
     ).fetchone()
-    if final and final["delay_minutes"] and final["delay_minutes"] > DEMURRAGE_FREE_HOURS * 60:
-        hours_over = (final["delay_minutes"] - DEMURRAGE_FREE_HOURS * 60) / 60.0
-        tonnes = final["weight_tonnes"] or 0.0
+    if final and final["delay_minutes"] and final["delay_minutes"] > DEMURRAGE_FREE_DAYS * 1440:
+        days_over = (final["delay_minutes"] / 1440.0) - DEMURRAGE_FREE_DAYS
+        teu = max((final["total_volume_cbm"] or 0.0) / CBM_PER_TEU, 0.1)
         demurrage = min(
-            DEMURRAGE_CAP_USD, round(hours_over * tonnes * DEMURRAGE_USD_PER_TONNE_HOUR, 2)
+            DEMURRAGE_CAP_USD, round(days_over * teu * DEMURRAGE_USD_PER_TEU_DAY, 2)
         )
         lines.append({
             "charge_type": "demurrage",
             "amount_usd": demurrage,
-            "basis": f"{hours_over:.1f} h × {tonnes:.1f} t × ${DEMURRAGE_USD_PER_TONNE_HOUR}/t-h, capped ${DEMURRAGE_CAP_USD}",
+            "basis": f"{days_over:.1f} d × {teu:.2f} TEU × ${DEMURRAGE_USD_PER_TEU_DAY}/TEU-day, capped ${DEMURRAGE_CAP_USD}",
         })
     return lines
 
@@ -155,6 +160,24 @@ def create_invoice(shipment_id: str, req: InvoiceRequest = None):
         conn.close()
 
 
+@router.post("/invoice/{invoice_id}/dispute")
+def dispute_invoice(invoice_id: str):
+    conn = _conn()
+    try:
+        row = conn.execute("SELECT status FROM fact_invoices WHERE invoice_id = ?", (invoice_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="invoice not found")
+        if row["status"] != "open":
+            raise HTTPException(status_code=409, detail=f"cannot dispute from status {row['status']}")
+        conn.execute(
+            "UPDATE fact_invoices SET status = 'disputed' WHERE invoice_id = ?", (invoice_id,)
+        )
+        conn.commit()
+        return {"invoice_id": invoice_id, "status": "disputed"}
+    finally:
+        conn.close()
+
+
 @router.post("/invoice/{invoice_id}/pay")
 def pay_invoice(invoice_id: str):
     conn = _conn()
@@ -164,6 +187,8 @@ def pay_invoice(invoice_id: str):
             raise HTTPException(status_code=404, detail="invoice not found")
         if row["status"] == "paid":
             raise HTTPException(status_code=409, detail="already paid")
+        if row["status"] not in ("open", "disputed"):
+            raise HTTPException(status_code=409, detail=f"cannot pay from status {row['status']}")
         conn.execute(
             "UPDATE fact_invoices SET status = 'paid', paid_ts = ? WHERE invoice_id = ?",
             (_now(), invoice_id),

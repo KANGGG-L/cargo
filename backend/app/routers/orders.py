@@ -13,10 +13,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
+from app.auth import require_session
 from app.config import get_settings
 from app.db import get_db
 
-router = APIRouter(prefix="/api/orders", tags=["orders"])
+router = APIRouter(
+    prefix="/api/orders",
+    dependencies=[Depends(require_session)],
+    tags=["orders"])
 
 LIFECYCLE = ["DRAFT", "QUOTED", "BOOKED", "IN_PROGRESS", "COMPLETED"]
 TRANSITIONS = {

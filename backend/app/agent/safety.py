@@ -24,6 +24,16 @@ ALLOWED_TABLES = {
     "fact_disruption_events",
     "public_hkg_air_cargo_monthly",
     "public_scfi_ocean_rate_weekly",
+    # agent-own runtime tables — the analyst must see its own alerts
+    "fact_alerts",
+    "fact_alert_rules",
+    "fact_milestone_events",
+    "fact_milestones_plan",
+    "fact_planned_legs",
+    "fact_charge_lines",
+    "fact_invoices",
+    "dim_awb",
+    "dim_documents",
 }
 
 _FORBIDDEN_NODES = (

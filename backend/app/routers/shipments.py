@@ -1,12 +1,18 @@
 """Shipment list, per-shipment leg trace and modal-flow (sankey) endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.auth import require_session
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 
-router = APIRouter(prefix="/api/shipments", tags=["shipments"])
+router = APIRouter(
+    prefix="/api/shipments",
+    tags=["shipments"],
+    dependencies=[Depends(require_session)],
+)
 
 
 @router.get("")

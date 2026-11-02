@@ -112,7 +112,16 @@ MOCK_PLANS: list[dict[str, Any]] = [{
             {
                 "tool": "diagnose_anomaly",
                 "args": {"scope": "sea", "anchor_date": "2026-03-20"},
-            }
+            },
+            {
+                "tool": "raise_alert",
+                "args": {
+                    "shipment_id": "SHP-2025-007919",
+                    "title": "Yantian feeder delay risk - rebooking required",
+                    "detail": "Feeder delay jumped from ~3 h baseline to ~17 h during the Mar 1-15 congestion window; downstream air connection at risk.",
+                    "severity": "high",
+                },
+            },
         ],
         "answer": (
             "The sea-feeder scan (as of 2026-03-20) flags Yantian: average feeder "

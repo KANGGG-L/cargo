@@ -5,12 +5,12 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.config import get_settings
+from app.config import ROOT_DIR, get_settings
 from app.ingest.fsu import parse_and_ingest
 
 router = APIRouter(prefix="/api/ingest", tags=["ingest"])
 
-SAMPLE_PATH = get_settings().db_path.parents[1] / "data" / "samples" / "fsu_replay.txt"
+SAMPLE_PATH = ROOT_DIR / "data" / "samples" / "fsu_replay.txt"
 
 
 class FsuRequest(BaseModel):

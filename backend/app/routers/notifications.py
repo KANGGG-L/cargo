@@ -4,13 +4,17 @@ import re
 import sqlite3
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.auth import require_session
 from app.config import get_settings
 from app.notifications.outbox import dispatch_pending
 
-router = APIRouter(prefix="/api/notifications", tags=["notifications"])
+router = APIRouter(
+    prefix="/api/notifications",
+    dependencies=[Depends(require_session)],
+    tags=["notifications"])
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 

@@ -78,6 +78,7 @@ export default function OrdersPage() {
     try {
       const r = await fetch(`${API_BASE}/api/orders`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
@@ -98,6 +99,7 @@ export default function OrdersPage() {
     try {
       const r = await fetch(`${API_BASE}/api/orders/${sid}/awb`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ airline_code: "CX" }),
       });
@@ -118,6 +120,7 @@ export default function OrdersPage() {
     try {
       const r = await fetch(`${API_BASE}/api/orders/${sid}/transition`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ to, note: "via workbench" }),
       });
@@ -136,6 +139,7 @@ export default function OrdersPage() {
     try {
       const r = await fetch(`${API_BASE}/api/documents/${sid}/generate`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ doc_type: docType }),
       });

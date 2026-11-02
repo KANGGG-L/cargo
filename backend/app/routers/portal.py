@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from app.auth import COOKIE, token_for, verify_login
 from app.config import get_settings
 
 router = APIRouter(prefix="/api/portal", tags=["portal"])
@@ -42,34 +43,17 @@ class LoginRequest(BaseModel):
 
 @router.post("/login")
 def login(req: LoginRequest, response: Response):
-    conn = _conn()
-    try:
-        user = conn.execute(
-            "SELECT email, password_hash, role, customer_id FROM dim_users WHERE email = ?",
-            (req.email,),
-        ).fetchone()
-    finally:
-        conn.close()
-    if not user or not hmac.compare_digest(user["password_hash"], hashlib.sha256(req.password.encode()).hexdigest()):
+    user = verify_login(req.email, req.password)
+    if not user:
         raise HTTPException(status_code=401, detail="invalid credentials")
-    response.set_cookie(COOKIE, _token(user["email"], user["password_hash"]), httponly=True)
+    response.set_cookie(COOKIE, token_for(user), httponly=True)
     return {"email": user["email"], "role": user["role"], "customer_id": user["customer_id"]}
 
 
 def _require_user(request: Request) -> dict:
-    token = request.cookies.get(COOKIE, "")
-    if not token:
-        raise HTTPException(status_code=401, detail="not logged in")
-    conn = _conn()
-    try:
-        for user in conn.execute(
-            "SELECT email, password_hash, role, customer_id FROM dim_users"
-        ).fetchall():
-            if hmac.compare_digest(_token(user["email"], user["password_hash"]), token):
-                return dict(user)
-    finally:
-        conn.close()
-    raise HTTPException(status_code=401, detail="invalid session")
+    from app.auth import require_session
+
+    return require_session(request)
 
 
 @router.get("/me")

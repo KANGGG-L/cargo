@@ -6,10 +6,14 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from app.auth import require_session
 from app.config import get_settings
 from app.milestones.rules import sync
 
-router = APIRouter(prefix="/api/alerts", tags=["alerts"])
+router = APIRouter(
+    prefix="/api/alerts",
+    dependencies=[Depends(require_session)],
+    tags=["alerts"])
 
 VALID_TRANSITIONS = {
     "OPEN": {"ACKNOWLEDGED"},

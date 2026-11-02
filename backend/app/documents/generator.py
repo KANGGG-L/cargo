@@ -10,9 +10,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas as pdfcanvas
 
-from app.config import get_settings
+from app.config import ROOT_DIR, get_settings
 
-DOCS_DIR = get_settings().db_path.parents[1] / "data" / "documents"
+DOCS_DIR = ROOT_DIR / "data" / "documents"
 
 
 def _draw_base(c: pdfcanvas.Canvas, title: str, shipment: dict, awb: dict | None):

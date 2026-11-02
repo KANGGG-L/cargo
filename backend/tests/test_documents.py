@@ -85,3 +85,17 @@ def test_awb_document_requires_awb_allocation():
     sid = _create_order(client)
     r = client.post(f"/api/documents/{sid}/generate", json={"doc_type": "AWB"})
     assert r.status_code == 409
+
+
+def test_eawb_sent_then_accepted_flow():
+    client = _client()
+    sid = _create_order(client)
+    client.post(f"/api/orders/{sid}/awb", json={"airline_code": "CX"})
+    r = client.post(f"/api/documents/{sid}/generate", json={"doc_type": "AWB"})
+    doc_id = r.json()["doc_id"]
+
+    # AWB confirm before generation is rejected; sent → accepted flows
+    r = client.post(f"/api/documents/{doc_id}/accept")
+    assert r.status_code == 200 and r.json()["eawb_status"] == "accepted"
+    r = client.post(f"/api/documents/{doc_id}/accept")
+    assert r.status_code == 409

@@ -119,3 +119,19 @@ def test_empirical_quantiles_fallback():
         assert q["p50"] <= q["p80"] <= q["p95"]
     finally:
         conn.close()
+
+
+def test_agent_can_query_alerts_after_whitelist_extension():
+    import asyncio
+
+    from app.agent.tools import tool_query_data
+
+    result = asyncio.run(
+        tool_query_data("How many OPEN alerts are there right now?")
+    )
+    # the whitelist extension is what lets alert-table SQL pass the firewall
+    # at all; in mock mode the matched few-shot decides which table is queried
+    assert "SELECT" in result.payload["sql"].upper()
+    from app.agent.safety import validate_and_rewrite
+
+    validate_and_rewrite(result.payload["sql"])  # must pass the firewall

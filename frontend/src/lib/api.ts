@@ -119,8 +119,25 @@ export interface NetworkPayload {
   truck_checkpoints: TruckCheckpoint[];
 }
 
+/** Demo session: ops account auto-login (cookie kept for :8000). One-shot. */
+let sessionPromise: Promise<void> | null = null;
+export function ensureSession(): Promise<void> {
+  if (!sessionPromise) {
+    sessionPromise = fetch(`${API_BASE}/api/portal/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email: "ops@demo.local", password: "demo1234" }),
+    })
+      .then(() => undefined)
+      .catch(() => undefined);
+  }
+  return sessionPromise;
+}
+
 async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store" });
+  await ensureSession();
+  const res = await fetch(`${API_BASE}${path}`, { cache: "no-store", credentials: "include" });
   if (!res.ok) throw new Error(`${path} -> ${res.status}`);
   return res.json() as Promise<T>;
 }

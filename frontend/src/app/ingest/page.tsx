@@ -30,6 +30,7 @@ export default function IngestPage() {
     try {
       const res = await fetch(`${API_BASE}/api/ingest/fsu`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, source_name: "workbench" }),
       });

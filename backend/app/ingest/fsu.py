@@ -115,6 +115,19 @@ def parse_and_ingest(conn: sqlite3.Connection, raw: str, source_name: str = "rep
                 result.duplicates += 1
                 continue
 
+            # trust gate: a reported timestamp implausibly far from the plan
+            # (e.g. a year-late backfill) goes to the reject queue for review
+            plan_dt = datetime.strptime(plan["planned_ts"][:19], "%Y-%m-%dT%H:%M:%S")
+            evt_dt = datetime.strptime(ts[:19], "%Y-%m-%dT%H:%M:%S")
+            if abs((evt_dt - plan_dt).total_seconds()) > 45 * 86400:
+                result.rejected += 1
+                result.rejects.append(
+                    {"line_no": line_no,
+                     "reason": f"implausible timestamp (>45 d from plan {plan['planned_ts'][:10]})",
+                     "raw_line": line[:200]}
+                )
+                continue
+
             leg_id = plan["leg_id"]
             key = hashlib.sha1(
                 f"{code}|{shipment_id}|{leg_id or ''}|{ts}".encode()

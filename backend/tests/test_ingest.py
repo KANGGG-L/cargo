@@ -2,11 +2,11 @@
 
 import sqlite3
 
-from app.config import get_settings
+from app.config import ROOT_DIR, get_settings
 from app.ingest.fsu import parse_and_ingest
 from app.milestones.rules import sync
 
-SAMPLE = (get_settings().db_path.parents[1] / "data" / "samples" / "fsu_replay.txt").read_text()
+SAMPLE = (ROOT_DIR / "data" / "samples" / "fsu_replay.txt").read_text()
 
 
 def _rw():
@@ -98,5 +98,31 @@ def test_ingest_log_and_rejects_recorded():
         assert len(log) >= 2
         rejects = conn.execute("SELECT COUNT(*) FROM ingest_rejects").fetchone()[0]
         assert rejects >= 4, "every reject from both runs is recorded"
+    finally:
+        conn.close()
+
+
+def test_implausible_timestamp_rejected():
+    """Trust gate: a year-late backfill goes to the reject queue, not the ledger."""
+    from app.ingest.fsu import parse_and_ingest
+
+    conn = _rw()
+    try:
+        conn.row_factory = sqlite3.Row
+        plan = conn.execute(
+            """
+            SELECT p.shipment_id, p.planned_ts FROM fact_milestones_plan p
+            WHERE p.code = 'ARR' AND NOT EXISTS (
+              SELECT 1 FROM fact_milestone_events e
+              WHERE e.shipment_id = p.shipment_id AND e.code = p.code AND e.leg_id = p.leg_id
+            ) LIMIT 1
+            """
+        ).fetchone()
+        assert plan, "need a missing ARR plan for this test"
+        far_ts = "2027-08-15T10:00:00Z"  # ~10 months after plan
+        line = f"FSU|ARR|{plan['shipment_id']}|HKG|{far_ts}"
+        result = parse_and_ingest(conn, line, "implausible-test")
+        assert result.ingested == 0
+        assert any("implausible timestamp" in r["reason"] for r in result.rejects)
     finally:
         conn.close()

@@ -485,3 +485,18 @@ class PlannedLeg(Base):
     basis: Mapped[str] = mapped_column(String(80))  # which schedule template built it
 
     __table_args__ = {"sqlite_autoincrement": True}
+
+
+# ---------------------------------------------------------------- ops clock (V1.0-C)
+
+
+class OpsClock(Base):
+    """Single-row runtime clock: advances sim time and drives milestone emission."""
+
+    __tablename__ = "ops_clock"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)  # always 1
+    sim_now: Mapped[str] = mapped_column(String(30))
+    speed: Mapped[int] = mapped_column(Integer)  # sim seconds per real second
+    running: Mapped[int] = mapped_column(Integer)  # 0/1
+    last_tick_ts: Mapped[str] = mapped_column(String(30))

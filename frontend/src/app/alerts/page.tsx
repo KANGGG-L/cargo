@@ -53,6 +53,8 @@ export default function AlertsPage() {
 
   useEffect(() => {
     load().catch((e) => setError(String(e)));
+    const t = setInterval(() => load().catch(() => {}), 8000);
+    return () => clearInterval(t);
   }, [load]);
 
   async function runScan() {

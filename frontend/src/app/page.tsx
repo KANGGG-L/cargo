@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { EChartsOption } from "echarts";
-import { CircleAlert, TriangleAlert } from "lucide-react";
+import { CircleAlert, Pause, Play, TriangleAlert } from "lucide-react";
 import { api } from "@/lib/api";
-import type { NetworkPayload, OverviewPayload, TrendsPayload } from "@/lib/api";
+import type { NetworkPayload, OpsClockState, OverviewPayload, TrendsPayload } from "@/lib/api";
 import ChartPanel, { DARK_AXIS, DARK_LEGEND, SERIES_COLORS } from "@/components/ChartPanel";
 import KpiCard from "@/components/KpiCard";
 
@@ -14,6 +14,53 @@ const CATEGORY_STYLE: Record<string, string> = {
   BORDER_CONGESTION: "border-amber-200 bg-amber-50 text-amber-700",
   COMMERCIAL_MISCONFIGURATION: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
 };
+
+
+function OpsClockBanner() {
+  const [clock, setClock] = useState<OpsClockState | null>(null);
+
+  const load = () => api.opsClock().then(setClock).catch(() => {});
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function toggle() {
+    if (!clock) return;
+    if (clock.running) await api.opsClockStop();
+    else await api.opsClockStart(clock.speed);
+    load();
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs">
+      <span
+        className={`inline-block h-2 w-2 rounded-full ${
+          clock?.running ? "animate-pulse bg-emerald-500" : "bg-zinc-400"
+        }`}
+      />
+      <span className="font-medium text-zinc-700">Ops clock</span>
+      {clock && (
+        <>
+          <span className="font-mono tabular-nums text-zinc-900">{clock.sim_now.replace("T", " ")}</span>
+          <span className="text-zinc-500">×{clock.speed.toLocaleString()}</span>
+        </>
+      )}
+      <span className="text-zinc-400">
+        {clock?.running ? "running — milestones fire as time passes" : "paused"}
+      </span>
+      <button
+        onClick={toggle}
+        className="ml-auto flex items-center gap-1 rounded-md border border-zinc-300 px-2.5 py-1 font-medium text-zinc-700 hover:bg-white"
+      >
+        {clock?.running ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+        {clock?.running ? "Pause" : "Resume"}
+      </button>
+    </div>
+  );
+}
 
 export default function OverviewPage() {
   const [overview, setOverview] = useState<OverviewPayload | null>(null);
@@ -264,6 +311,8 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-5">
+      <OpsClockBanner />
+
       {/* KPI rows — three modes at equal footing */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <KpiCard label="Air OTP (±15min)" value={k.air_otp_pct} unit="%" hint="flight leg level" />

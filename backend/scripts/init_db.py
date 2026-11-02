@@ -112,9 +112,24 @@ def init_database():
             print(f"  - {table_name}: {res} rows")
 
     seed_users_and_defaults()
+    seed_ops_clock()
     print("[OK] Database initialization and ingestion completed successfully.")
 
 
+
+
+def seed_ops_clock():
+    """Ops clock row (V1.0-C) — paused at the data horizon minus 48 h."""
+    horizon = "2026-10-29T12:00:00Z"
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT OR IGNORE INTO ops_clock (id, sim_now, speed, running, last_tick_ts)"
+                " VALUES (1, :t, 600, 0, :t)"
+            ),
+            {"t": horizon},
+        )
+    print("[OK] Seeded ops clock (paused, sim_now = horizon - 48 h)")
 
 
 def seed_users_and_defaults():

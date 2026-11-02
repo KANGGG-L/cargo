@@ -1,12 +1,24 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings, is_mock_mode
-from app.routers import alerts, analytics, chat, documents, ingest, notifications, orders, portal, settlement, shipments
+from app.routers import alerts, analytics, chat, documents, ingest, notifications, ops, orders, portal, settlement, shipments
 
 settings = get_settings()
 
-app = FastAPI(title="HKG Cargo Control Tower API", version="0.2.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from app.ops import clock
+
+    clock.ensure_task()
+    yield
+    clock.stop_task()
+
+
+app = FastAPI(title="HKG Cargo Control Tower API", version="0.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,6 +38,7 @@ app.include_router(orders.router)
 app.include_router(documents.router)
 app.include_router(portal.router)
 app.include_router(settlement.router)
+app.include_router(ops.router)
 
 
 @app.get("/api/health")

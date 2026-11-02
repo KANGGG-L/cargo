@@ -223,6 +223,13 @@ export interface TrackLeg {
   coords: { lat: number; lon: number }[];
 }
 
+export interface OpsClockState {
+  sim_now: string;
+  speed: number;
+  running: number;
+  last_tick_ts: string;
+}
+
 export const api = {
   overview: () => getJson<OverviewPayload>("/api/analytics/overview"),
   trends: () => getJson<TrendsPayload>("/api/analytics/trends"),
@@ -273,4 +280,13 @@ export const api = {
   outbox: () => getJson<OutboxRow[]>("/api/notifications/outbox?limit=50"),
   dispatchNotifications: () =>
     fetch(`${API_BASE}/api/notifications/dispatch`, { method: "POST" }).then((r) => r.json()),
+  opsClock: () => getJson<OpsClockState>("/api/ops/clock"),
+  opsClockStart: (speed: number, simNow?: string) =>
+    fetch(`${API_BASE}/api/ops/clock/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ speed, sim_now: simNow }),
+    }).then((r) => r.json()),
+  opsClockStop: () =>
+    fetch(`${API_BASE}/api/ops/clock/stop`, { method: "POST" }).then((r) => r.json()),
 };

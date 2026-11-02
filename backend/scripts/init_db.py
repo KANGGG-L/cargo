@@ -111,7 +111,34 @@ def init_database():
             res = conn.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
             print(f"  - {table_name}: {res} rows")
 
+    seed_users_and_defaults()
     print("[OK] Database initialization and ingestion completed successfully.")
+
+
+
+
+def seed_users_and_defaults():
+    """Portal demo accounts (F6) — sha256('demo1234') hashes, seeded once."""
+    import hashlib
+
+    h = hashlib.sha256("demo1234".encode()).hexdigest()
+    now = "2026-01-01T00:00:00Z"
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT OR IGNORE INTO dim_users (email, password_hash, role, customer_id, created_ts)"
+                " VALUES ('ops@demo.local', :h, 'ops', NULL, :now)"
+            ),
+            {"h": h, "now": now},
+        )
+        conn.execute(
+            text(
+                "INSERT OR IGNORE INTO dim_users (email, password_hash, role, customer_id, created_ts)"
+                " VALUES ('acme@demo.local', :h, 'customer', 'CUST-001', :now)"
+            ),
+            {"h": h, "now": now},
+        )
+    print("[OK] Seeded portal demo users (ops@demo.local / acme@demo.local, pwd demo1234)")
 
 
 if __name__ == "__main__":

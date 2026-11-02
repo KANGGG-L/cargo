@@ -149,6 +149,23 @@ export default function OrdersPage() {
     }
   }
 
+  async function settle(sid: string) {
+    setBusy(`${sid}-settle`);
+    setError(null);
+    try {
+      await fetch(`${API_BASE}/api/settlement/${sid}/charges`, { method: "POST" });
+      const inv = await fetch(`${API_BASE}/api/settlement/${sid}/invoice`, { method: "POST" });
+      if (!inv.ok) throw new Error((await inv.json()).detail ?? String(inv.status));
+      const d = await inv.json();
+      setMsg(`Invoice ${d.invoice_id} created — USD ${d.amount_usd.toLocaleString()} (open)`);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* create form */}
@@ -292,6 +309,13 @@ export default function OrdersPage() {
                     📄 DG decl.
                   </button>
                 )}
+                <button
+                  onClick={() => settle(o.shipment_id)}
+                  disabled={busy === `${o.shipment_id}-settle`}
+                  className="rounded-md border border-emerald-800 px-2 py-1 text-[10px] text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-40"
+                >
+                  💰 Settle & invoice
+                </button>
                 {o.lifecycle !== "COMPLETED" && o.lifecycle !== "CANCELLED" && (
                   <button
                     onClick={() => transition(o.shipment_id, "CANCELLED")}

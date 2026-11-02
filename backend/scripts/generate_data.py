@@ -8,9 +8,14 @@ Embeds 3 deterministic anomaly scenarios:
 """
 
 import csv
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 import random
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # backend/
+
+from app.tracking.simulator import seed_locations  # noqa: E402
 
 # Fixed seed for strict determinism
 RANDOM_SEED = 42
@@ -1012,6 +1017,12 @@ def main():
         "dim_milestone_codes.csv",
         ["code", "name", "mode", "seq_group", "description"],
         generate_milestone_codes(),
+    )
+
+    save_csv(
+        "dim_locations.csv",
+        ["code", "name", "kind", "lat", "lon"],
+        seed_locations(),
     )
 
     save_csv(

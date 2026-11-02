@@ -214,6 +214,15 @@ export interface OutboxRow {
   subscriber_email: string;
 }
 
+export interface TrackLeg {
+  leg_id: string;
+  mode: string;
+  color: string;
+  origin: string;
+  destination: string;
+  coords: { lat: number; lon: number }[];
+}
+
 export const api = {
   overview: () => getJson<OverviewPayload>("/api/analytics/overview"),
   trends: () => getJson<TrendsPayload>("/api/analytics/trends"),
@@ -228,6 +237,8 @@ export const api = {
     getJson<{ shipment_id: string; milestones: MilestoneRow[] }>(
       `/api/shipments/${id}/milestones`
     ),
+  tracks: (id: string) =>
+    getJson<{ shipment_id: string; tracks: TrackLeg[] }>(`/api/shipments/${id}/tracks`),
   alerts: (status?: string, severity?: string) =>
     getJson<AlertItem[]>(
       `/api/alerts?limit=200${status ? `&status=${status}` : ""}${severity ? `&severity=${severity}` : ""}`

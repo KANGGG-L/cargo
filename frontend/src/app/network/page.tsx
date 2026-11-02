@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import { api } from "@/lib/api";
@@ -7,10 +8,16 @@ import type {
   MilestoneRow,
   SankeyPayload,
   ShipmentListItem,
+  TrackLeg,
   TraceLeg,
   TracePayload,
 } from "@/lib/api";
 import ChartPanel, { DARK_AXIS } from "@/components/ChartPanel";
+
+const ShipmentMap = dynamic(() => import("@/components/ShipmentMap"), {
+  ssr: false,
+  loading: () => <div className="p-6 text-xs text-slate-500">Loading map…</div>,
+});
 
 const MODE_STYLE: Record<string, { icon: string; color: string; label: string }> = {
   SEA: { icon: "🚢", color: "border-indigo-500/60 bg-indigo-950/30", label: "text-indigo-300" },
@@ -45,6 +52,7 @@ export default function NetworkPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [trace, setTrace] = useState<TracePayload | null>(null);
   const [milestones, setMilestones] = useState<MilestoneRow[] | null>(null);
+  const [tracks, setTracks] = useState<TrackLeg[] | null>(null);
   const [sankey, setSankey] = useState<SankeyPayload | null>(null);
   const [subEmail, setSubEmail] = useState("");
   const [subOpen, setSubOpen] = useState(false);
@@ -75,8 +83,10 @@ export default function NetworkPage() {
     if (!selectedId) return;
     setTrace(null);
     setMilestones(null);
+    setTracks(null);
     api.trace(selectedId).then(setTrace).catch(() => setTrace(null));
     api.milestones(selectedId).then((r) => setMilestones(r.milestones)).catch(() => setMilestones(null));
+    api.tracks(selectedId).then((r) => setTracks(r.tracks)).catch(() => setTracks(null));
   }, [selectedId]);
 
   useEffect(() => {
@@ -259,6 +269,22 @@ export default function NetworkPage() {
           option={sankeyOption}
           height={340}
         />
+      )}
+
+      {tracks && tracks.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-slate-800">
+          <div className="border-b border-slate-800 bg-[#0f1729] px-4 py-2.5 text-sm font-semibold text-slate-300">
+            Route Map — simulated great-circle tracks (swap in AIS/ADS-B feeds for live positions)
+            <span className="ml-3 inline-flex gap-3 text-[10px] font-normal">
+              <span className="text-cyan-300">● AIR</span>
+              <span className="text-indigo-300">● SEA</span>
+              <span className="text-emerald-300">● TRUCK</span>
+            </span>
+          </div>
+          <div className="h-[380px]">
+            <ShipmentMap tracks={tracks} />
+          </div>
+        </div>
       )}
     </div>
   );

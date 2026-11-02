@@ -78,6 +78,7 @@ def init_database():
         ("fact_rate_cards", SYNTHETIC_DIR / "fact_rate_cards.csv"),
         ("fact_disruption_events", SYNTHETIC_DIR / "fact_disruption_events.csv"),
         ("dim_milestone_codes", SYNTHETIC_DIR / "dim_milestone_codes.csv"),
+        ("dim_locations", SYNTHETIC_DIR / "dim_locations.csv"),
         ("fact_alert_rules", SYNTHETIC_DIR / "fact_alert_rules.csv"),
         ("fact_milestones_plan", SYNTHETIC_DIR / "fact_milestones_plan.csv"),
         ("fact_milestone_events", SYNTHETIC_DIR / "fact_milestone_events.csv"),

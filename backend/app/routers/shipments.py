@@ -68,6 +68,23 @@ def shipment_milestones(shipment_id: str, db: Session = Depends(get_db)):
     return {"shipment_id": shipment_id, "milestones": [dict(r) for r in rows]}
 
 
+@router.get("/{shipment_id}/tracks")
+def shipment_tracks(shipment_id: str, db: Session = Depends(get_db)):
+    """Great-circle/road polylines per leg for the map view (simulated positions)."""
+    legs = db.execute(
+        text(
+            """
+            SELECT leg_id, leg_sequence, transport_mode, origin_facility, destination_facility
+            FROM fact_shipment_legs WHERE shipment_id = :sid ORDER BY leg_sequence
+            """
+        ),
+        {"sid": shipment_id},
+    ).mappings().all()
+    from app.tracking.simulator import shipment_tracks
+
+    return {"shipment_id": shipment_id, "tracks": shipment_tracks([dict(l) for l in legs])}
+
+
 @router.get("/{shipment_id}/trace")
 def shipment_trace(shipment_id: str, db: Session = Depends(get_db)):
     shipment = db.execute(

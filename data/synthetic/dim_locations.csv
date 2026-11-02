@@ -1,0 +1,14 @@
+code,name,kind,lat,lon
+CNSHA,Shanghai,seaport,31.2304,121.4737
+CNNGB,Ningbo,seaport,29.8683,121.544
+CNYTN,Yantian,seaport,22.5759,114.2648
+CNCAN,Guangzhou,seaport,23.1291,113.2644
+SZX,Shenzhen,checkpoint,22.5431,114.0579
+HKG,Hong Kong,airport,22.308,113.9185
+LAX,Los Angeles,airport,33.9416,-118.4085
+ORD,Chicago,airport,41.9742,-87.9073
+LHR,London,airport,51.47,-0.4543
+FRA,Frankfurt,airport,50.0379,8.5622
+NRT,Tokyo,airport,35.772,140.3929
+SIN,Singapore,airport,1.3644,103.9915
+SYD,Sydney,airport,-33.9399,151.1753

@@ -277,7 +277,7 @@ def allocate_awb(shipment_id: str, req: AwbRequest, db=Depends(get_db)):
             raise HTTPException(status_code=409, detail="AWB already allocated")
         prefix = AIRLINE_PREFIX[req.airline_code]
         serial = int(hashlib.sha1(shipment_id.encode()).hexdigest()[:8], 16) % 10_000_000
-        check = (int(prefix) * 10000000 + serial) % 7
+        check = serial % 7  # IATA: the 7-digit serial number modulo 7
         awb_no = f"{prefix}-{serial:07d}{check}"
         conn.execute(
             "INSERT INTO dim_awb (awb_no, shipment_id, airline_code, created_ts) VALUES (?, ?, ?, ?)",

@@ -178,7 +178,7 @@ MOCK_PLANS: list[dict[str, Any]] = [{
         "answer": (
             "Yantian feeder legs during the Mar 1–15, 2026 congestion event averaged "
             "over 50 h of delay (vs ~2 h normally), and the feeder spot rate jumped "
-            "from ~$550 to ~$860 per FEU.\n\n"
+            "from ~$570 to ~$810 per FEU (+43%).\n\n"
             "Recommendations: shift time-critical Sea-Air cargo to Nanjing/Shanghai "
             "feeder origins when Yantian yard utilization crosses a defined threshold, "
             "and add a congestion surcharge clause to feeder contracts to protect margin."

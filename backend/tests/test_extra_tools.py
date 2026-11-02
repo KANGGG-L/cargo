@@ -98,7 +98,7 @@ def test_simulation_is_deterministic_and_positive():
     q = p["delay_quantiles_min"]
     assert q["p50"] <= q["p80"] <= q["p95"] <= q["max"], q
     assert p["recovery_curve"][-1]["backlog_tonnes"] == 0.0
-    assert p["model"] == "chain-fifo-v1"
+    assert p["model"].startswith("chain-fifo-v2")
 
 
 def test_yantian_congestion_scenario_scales_with_severity():

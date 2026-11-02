@@ -555,7 +555,7 @@ def generate_ocean_rates():
     while current_date <= END_DATE.date():
         for cor in corridors:
             base_rate = (
-                random.uniform(420, 680)
+                random.uniform(520, 600)
                 if "FEEDER" in cor
                 else random.uniform(750, 1100)
             )

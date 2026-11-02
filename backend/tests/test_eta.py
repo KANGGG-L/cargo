@@ -121,10 +121,13 @@ def test_empirical_quantiles_fallback():
         conn.close()
 
 
-def test_agent_can_query_alerts_after_whitelist_extension():
+def test_agent_can_query_alerts_after_whitelist_extension(monkeypatch):
     import asyncio
 
     from app.agent.tools import tool_query_data
+    from app.llm.mock import MockLLM
+
+    monkeypatch.setattr("app.agent.tools.get_llm", lambda: MockLLM())
 
     result = asyncio.run(
         tool_query_data("How many OPEN alerts are there right now?")

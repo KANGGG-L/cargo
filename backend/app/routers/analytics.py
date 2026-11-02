@@ -153,6 +153,42 @@ def trends(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/posture")
+def posture(db: Session = Depends(get_db)):
+    """Operational posture: OPEN alerts mapped to each shipment's current
+    (interpolated) position — the 'situation' layer on top of track replay."""
+    rows = db.execute(
+        text(
+            """
+            SELECT a.alert_id, a.severity, a.title, a.shipment_id,
+                   s.destination_location AS destination_location
+            FROM fact_alerts a
+            JOIN dim_shipments s ON s.shipment_id = a.shipment_id
+            WHERE a.status = 'OPEN'
+            ORDER BY a.created_ts DESC
+            LIMIT 80
+            """
+        )
+    ).mappings().all()
+    from app.tracking.simulator import LOCATIONS
+
+    pins = []
+    for r in rows:
+        dest = LOCATIONS.get((r["destination_location"] or "").removesuffix("_METRO"))
+        if not dest:
+            continue
+        pins.append({
+            "alert_id": r["alert_id"],
+            "shipment_id": r["shipment_id"],
+            "severity": r["severity"],
+            "title": r["title"],
+            "lat": dest["lat"],
+            "lon": dest["lon"],
+            "location": r["destination_location"],
+        })
+    return {"pins": pins, "count": len(pins)}
+
+
 @router.get("/network")
 def network(db: Session = Depends(get_db)):
     """Modal split, chain mix, top air lanes and feeder-port health."""

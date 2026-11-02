@@ -28,6 +28,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def access_log(request, call_next):
+    import time as _time
+
+    t0 = _time.perf_counter()
+    response = await call_next(request)
+    dur_ms = (_time.perf_counter() - t0) * 1000
+    print(
+        f'{{"event":"access","method":"{request.method}","path":"{request.url.path}",'
+        f'"status":{response.status_code},"ms":{dur_ms:.1f}}}',
+        flush=True,
+    )
+    return response
+
+
 app.include_router(analytics.router)
 app.include_router(chat.router)
 app.include_router(shipments.router)

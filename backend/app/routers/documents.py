@@ -40,7 +40,7 @@ def _shipment(conn, shipment_id: str) -> dict:
 
 
 class GenerateRequest(BaseModel):
-    doc_type: str = Field(pattern="^(AWB|DG_DECL|PACKING_LIST)$")
+    doc_type: str = Field(pattern="^(AWB|DG_DECL|PACKING_LIST|CUSTOMS)$")
 
 
 @router.post("/{shipment_id}/generate")
@@ -59,6 +59,8 @@ def generate_document(shipment_id: str, req: GenerateRequest):
             path = generator.generate_awb(shipment, awb_dict)
         elif req.doc_type == "DG_DECL":
             path = generator.generate_dg_decl(shipment)
+        elif req.doc_type == "CUSTOMS":
+            path = generator.generate_customs(shipment)
         else:
             legs = [dict(r) for r in conn.execute(
                 "SELECT leg_sequence, transport_mode, origin_facility, destination_facility, distance_km"

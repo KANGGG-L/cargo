@@ -35,6 +35,7 @@ class SubscriptionRequest(BaseModel):
     notify_on: str = Field(default="ALERT,DELAY,MISSING", max_length=60)
     delay_threshold_min: int = Field(default=120, ge=15, le=2880)
     channel: str = Field(default="email", pattern="^(email|webhook)$")
+    webhook_url: str | None = Field(default=None, max_length=300)
 
 
 @router.post("/subscriptions")
@@ -56,11 +57,11 @@ def create_subscription(req: SubscriptionRequest):
         cur = conn.execute(
             """
             INSERT INTO dim_subscriptions (subscriber_email, shipment_id, notify_on,
-                                           delay_threshold_min, channel, created_ts)
-            VALUES (?, ?, ?, ?, ?, ?)
+                                           delay_threshold_min, channel, webhook_url, created_ts)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (req.email, req.shipment_id, req.notify_on, req.delay_threshold_min,
-             req.channel, _now()),
+             req.channel, req.webhook_url, _now()),
         )
         conn.commit()
         return {"id": cur.lastrowid, **req.model_dump()}

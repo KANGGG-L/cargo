@@ -13,7 +13,23 @@ export interface TrackLeg {
   coords: { lat: number; lon: number }[];
 }
 
-export default function ShipmentMap({ tracks }: { tracks: TrackLeg[] }) {
+export interface AlertPin {
+  alert_id: string;
+  shipment_id: string;
+  severity: string;
+  title: string;
+  lat: number;
+  lon: number;
+  location: string;
+}
+
+export default function ShipmentMap({
+  tracks,
+  alertPins = [],
+}: {
+  tracks: TrackLeg[];
+  alertPins?: AlertPin[];
+}) {
   if (!tracks.length) {
     return <div className="p-6 text-center text-xs text-slate-500">No mappable facilities.</div>;
   }
@@ -44,6 +60,23 @@ export default function ShipmentMap({ tracks }: { tracks: TrackLeg[] }) {
             {t.mode} · {t.origin} → {t.destination}
           </Tooltip>
         </Polyline>
+      ))}
+      {alertPins.map((pin) => (
+        <CircleMarker
+          key={pin.alert_id}
+          center={[pin.lat, pin.lon]}
+          radius={7}
+          pathOptions={{
+            color: pin.severity === "high" ? "#dc2626" : "#d97706",
+            fillColor: pin.severity === "high" ? "#dc2626" : "#d97706",
+            fillOpacity: 0.9,
+            weight: 2,
+          }}
+        >
+          <Tooltip>
+            [{pin.severity.toUpperCase()}] {pin.title} — {pin.shipment_id}
+          </Tooltip>
+        </CircleMarker>
       ))}
       {tracks.map((t) => {
         const first = t.coords[0];

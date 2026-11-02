@@ -60,7 +60,8 @@ def list_alerts(
             """
             SELECT a.alert_id, a.shipment_id, a.rule_id, a.source, a.severity, a.title,
                    a.detail, a.status, a.created_ts, a.updated_ts, a.assignee,
-                   a.resolution_note, s.transport_chain_type, s.destination_location
+                   a.resolution_note, s.transport_chain_type, s.destination_location,
+                   CAST((julianday('now') - julianday(a.created_ts)) AS INTEGER) AS days_open
             FROM fact_alerts a
             JOIN dim_shipments s ON s.shipment_id = a.shipment_id
             WHERE (:status IS NULL OR a.status = :status)
@@ -71,7 +72,7 @@ def list_alerts(
             {"status": status, "severity": severity, "limit": limit},
         ).fetchall()
         cols = [c[0] for c in conn.execute("SELECT * FROM fact_alerts LIMIT 0").description]
-        extra = ["transport_chain_type", "destination_location"]
+        extra = ["transport_chain_type", "destination_location", "days_open"]
         return [dict(zip(cols + extra, r)) for r in rows]
     finally:
         conn.close()

@@ -5,6 +5,7 @@ alert); the dispatch worker only flips sent_ts. No event → no row; every row
 is auditable even before an SMTP server exists.
 """
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any
@@ -81,13 +82,50 @@ def enqueue_for_alerts(alerts: list[dict[str, Any]]) -> int:
 
 
 def dispatch_pending() -> int:
-    """Mark every pending outbox row as sent (simulated SMTP worker)."""
+    """Deliver pending outbox rows: email rows are marked sent (simulated SMTP),
+    webhook rows actually POST their payload to the subscription URL."""
+    import urllib.request
+
     conn = sqlite3.connect(get_settings().db_path)
+    conn.row_factory = sqlite3.Row
+    sent = 0
     try:
-        cur = conn.execute(
-            "UPDATE notification_outbox SET sent_ts = ? WHERE sent_ts IS NULL", (_now(),)
-        )
+        pending = conn.execute(
+            """
+            SELECT o.id, o.channel, o.subject, o.body, o.shipment_id,
+                   s.webhook_url
+            FROM notification_outbox o
+            JOIN dim_subscriptions s ON s.id = o.subscription_id
+            WHERE o.sent_ts IS NULL
+            """
+        ).fetchall()
+        now = _now()
+        for row in pending:
+            ok = True
+            if row["channel"] == "webhook":
+                if not row["webhook_url"]:
+                    continue  # misconfigured — stays pending
+                payload = json.dumps({
+                    "event": "cargo.alert",
+                    "shipment_id": row["shipment_id"],
+                    "subject": row["subject"],
+                    "body": row["body"],
+                }).encode()
+                req = urllib.request.Request(
+                    row["webhook_url"], data=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        ok = 200 <= resp.status < 300
+                except Exception:
+                    ok = False  # stays pending for retry
+            if ok:
+                conn.execute(
+                    "UPDATE notification_outbox SET sent_ts = ? WHERE id = ?", (now, row["id"])
+                )
+                sent += 1
         conn.commit()
-        return cur.rowcount
+        return sent
     finally:
         conn.close()

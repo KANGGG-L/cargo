@@ -100,6 +100,40 @@ def build_charges(shipment_id: str):
         conn.close()
 
 
+@router.get("/aging/summary")
+def ar_aging():
+    """AR aging buckets — the reconciliation view the product review asked for."""
+    from datetime import datetime
+
+    conn = _conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT i.invoice_id, i.customer_id, c.customer_name, i.shipment_id,
+                   i.amount_usd, i.status, i.created_ts
+            FROM fact_invoices i JOIN dim_customers c ON c.customer_id = i.customer_id
+            ORDER BY i.created_ts
+            """
+        ).fetchall()
+        today = datetime.now(timezone.utc)
+        buckets = {"0-30": 0.0, "31-60": 0.0, "61-90": 0.0, "90+": 0.0}
+        items = []
+        for r in rows:
+            created = datetime.strptime(r["created_ts"][:19], "%Y-%m-%dT%H:%M:%S")
+            days = (today - created).days
+            bucket = "0-30" if days <= 30 else "31-60" if days <= 60 else "61-90" if days <= 90 else "90+"
+            if r["status"] != "paid":
+                buckets[bucket] = round(buckets[bucket] + r["amount_usd"], 2)
+            items.append({
+                **dict(r),
+                "days_outstanding": days,
+                "aging_bucket": bucket if r["status"] != "paid" else None,
+            })
+        return {"buckets_usd": buckets, "invoices": items}
+    finally:
+        conn.close()
+
+
 @router.get("/{shipment_id}")
 def settlement_view(shipment_id: str):
     conn = _conn()

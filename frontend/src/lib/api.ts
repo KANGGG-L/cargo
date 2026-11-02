@@ -261,6 +261,19 @@ export const api = {
     getJson<{ shipment_id: string; milestones: MilestoneRow[] }>(
       `/api/shipments/${id}/milestones`
     ),
+  posture: () =>
+    getJson<{ pins: { alert_id: string; shipment_id: string; severity: string; title: string; lat: number; lon: number; location: string }[]; count: number }>(
+      "/api/analytics/posture"
+    ),
+  eta: (id: string) =>
+    getJson<{
+      shipment_id: string;
+      legs: { leg_sequence: number; transport_mode: string; lane: string; at_risk: boolean; eta_minutes_from_booking: Record<string, number> }[];
+      eta_end_to_end_min: number;
+      eta_end_to_end_bands_min: Record<string, number>;
+      at_risk: boolean;
+      method: string;
+    }>(`/api/orders/${id}/eta`),
   tracks: (id: string) =>
     getJson<{ shipment_id: string; tracks: TrackLeg[] }>(`/api/shipments/${id}/tracks`),
   alerts: (status?: string, severity?: string) =>

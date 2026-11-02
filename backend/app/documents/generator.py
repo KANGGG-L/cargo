@@ -103,6 +103,42 @@ def generate_dg_decl(shipment: dict) -> Path:
     return path
 
 
+def generate_customs(shipment: dict) -> Path:
+    DOCS_DIR.mkdir(parents=True, exist_ok=True)
+    path = DOCS_DIR / f"CUSTOMS_{shipment['shipment_id']}.pdf"
+    c = pdfcanvas.Canvas(str(path), pagesize=A4)
+    y = _draw_base(c, "EXPORT CUSTOMS DECLARATION", shipment, None)
+
+    y -= 6 * mm
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(25 * mm, y, "Declaration Particulars")
+    y -= 7 * mm
+    c.setFont("Helvetica", 9)
+    rows = [
+        ("Exporter", f"{shipment['customer_name']} (Hong Kong SAR)"),
+        ("Country of Origin", "CN"),
+        ("Country of Destination", {"LAX": "US", "ORD": "US", "LHR": "GB", "FRA": "DE",
+                                     "NRT": "JP", "SIN": "SG", "SYD": "AU"}.get(
+                                         shipment["destination_location"], "—")),
+        ("Gross Mass", f"{shipment['total_chargeable_weight_kg']:,.1f} kg"),
+        ("Volume", f"{shipment['total_volume_cbm']:,.2f} CBM"),
+        ("Declared Value (freight)", f"USD {shipment['contracted_revenue_usd']:,.2f}"),
+        ("Incoterm Basis", "FOB HKG (synthetic)"),
+        ("Licence / Permit", "Not required for this commodity class (synthetic)"),
+    ]
+    for label, value in rows:
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(25 * mm, y, label)
+        c.setFont("Helvetica", 9)
+        c.drawString(70 * mm, y, str(value))
+        y -= 7 * mm
+    c.setFont("Helvetica-Oblique", 8)
+    c.drawString(25 * mm, 15 * mm, "Synthetic demonstration document — not a legal customs declaration.")
+    c.showPage()
+    c.save()
+    return path
+
+
 def generate_packing_list(shipment: dict, legs: list[dict]) -> Path:
     DOCS_DIR.mkdir(parents=True, exist_ok=True)
     path = DOCS_DIR / f"PACKING_LIST_{shipment['shipment_id']}.pdf"

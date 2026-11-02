@@ -154,6 +154,24 @@ export default function OrdersPage() {
     }
   }
 
+  async function showEta(sid: string) {
+    setBusy(`${sid}-eta`);
+    setError(null);
+    try {
+      const r = await fetch(`${API_BASE}/api/orders/${sid}/eta`);
+      if (!r.ok) throw new Error((await r.json()).detail ?? String(r.status));
+      const d = await r.json();
+      const b = d.eta_end_to_end_bands_min;
+      setMsg(
+        `ETA ${sid}: P50 ${(b.p50 / 1440).toFixed(1)} d · P80 ${(b.p80 / 1440).toFixed(1)} d · P95 ${(b.p95 / 1440).toFixed(1)} d ${d.at_risk ? "(at risk)" : "(on plan)"} — empirical quantiles per mode+lane`
+      );
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function settle(sid: string) {
     setBusy(`${sid}-settle`);
     setError(null);
@@ -312,6 +330,15 @@ export default function OrdersPage() {
                     className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-700 hover:bg-rose-50 disabled:opacity-40"
                   >
                     <FileText className="inline h-3 w-3" /> DG decl.
+                  </button>
+                )}
+                {(o.lifecycle === "BOOKED" || o.lifecycle === "IN_PROGRESS") && (
+                  <button
+                    onClick={() => showEta(o.shipment_id)}
+                    disabled={busy === `${o.shipment_id}-eta`}
+                    className="rounded-md border border-zinc-400 px-2 py-1 text-[10px] text-zinc-500 hover:text-zinc-900 disabled:opacity-40"
+                  >
+                    ETA
                   </button>
                 )}
                 <button

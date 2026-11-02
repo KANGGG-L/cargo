@@ -55,6 +55,7 @@ export default function NetworkPage() {
   const [milestones, setMilestones] = useState<MilestoneRow[] | null>(null);
   const [tracks, setTracks] = useState<TrackLeg[] | null>(null);
   const [sankey, setSankey] = useState<SankeyPayload | null>(null);
+  const [pins, setPins] = useState<{ alert_id: string; shipment_id: string; severity: string; title: string; lat: number; lon: number; location: string }[] | null>(null);
   const [subEmail, setSubEmail] = useState("");
   const [subOpen, setSubOpen] = useState(false);
   const [subMsg, setSubMsg] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export default function NetworkPage() {
 
   useEffect(() => {
     api.sankey().then(setSankey).catch(() => {});
+    api.posture().then((r) => setPins(r.pins)).catch(() => setPins([]));
   }, []);
 
   const sankeyOption: EChartsOption | null = useMemo(() => {
@@ -283,7 +285,7 @@ export default function NetworkPage() {
             </span>
           </div>
           <div className="h-[380px]">
-            <ShipmentMap tracks={tracks} />
+            <ShipmentMap tracks={tracks} alertPins={pins ?? []} />
           </div>
         </div>
       )}

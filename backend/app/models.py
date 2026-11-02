@@ -336,6 +336,7 @@ class Subscription(Base):
     notify_on: Mapped[str] = mapped_column(String(60))  # csv: ALERT,DELAY,MISSING
     delay_threshold_min: Mapped[int] = mapped_column(Integer)
     channel: Mapped[str] = mapped_column(String(10))  # email | webhook
+    webhook_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_ts: Mapped[str] = mapped_column(String(30))
 
     # never reuse rowids: outbox rows reference deleted subscriptions by id

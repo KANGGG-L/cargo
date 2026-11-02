@@ -129,6 +129,26 @@ export default function OrdersPage() {
     }
   }
 
+  async function generateDoc(sid: string, docType: string) {
+    setBusy(`${sid}-${docType}`);
+    setError(null);
+    try {
+      const r = await fetch(`${API_BASE}/api/documents/${sid}/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc_type: docType }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail ?? String(r.status));
+      const d = await r.json();
+      setMsg(`${docType} generated: ${d.doc_id} (e-AWB status: ${d.eawb_status})`);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* create form */}
@@ -247,6 +267,31 @@ export default function OrdersPage() {
                     → {to}
                   </button>
                 ))}
+                <button
+                  onClick={() => generateDoc(o.shipment_id, "PACKING_LIST")}
+                  disabled={busy === `${o.shipment_id}-PACKING_LIST`}
+                  className="rounded-md border border-slate-700 px-2 py-1 text-[10px] text-slate-400 hover:border-cyan-700 hover:text-cyan-300 disabled:opacity-40"
+                >
+                  📄 Packing list
+                </button>
+                {o.awb_no && (
+                  <button
+                    onClick={() => generateDoc(o.shipment_id, "AWB")}
+                    disabled={busy === `${o.shipment_id}-AWB`}
+                    className="rounded-md border border-indigo-700 px-2 py-1 text-[10px] text-indigo-300 hover:bg-indigo-950/40 disabled:opacity-40"
+                  >
+                    📄 AWB doc
+                  </button>
+                )}
+                {o.cargo_category === "Dangerous_Goods" && (
+                  <button
+                    onClick={() => generateDoc(o.shipment_id, "DG_DECL")}
+                    disabled={busy === `${o.shipment_id}-DG_DECL`}
+                    className="rounded-md border border-rose-800 px-2 py-1 text-[10px] text-rose-300 hover:bg-rose-950/40 disabled:opacity-40"
+                  >
+                    📄 DG decl.
+                  </button>
+                )}
                 {o.lifecycle !== "COMPLETED" && o.lifecycle !== "CANCELLED" && (
                   <button
                     onClick={() => transition(o.shipment_id, "CANCELLED")}

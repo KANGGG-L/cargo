@@ -463,3 +463,25 @@ class User(Base):
     created_ts: Mapped[str] = mapped_column(String(30))
 
     __table_args__ = {"sqlite_autoincrement": True}
+
+
+# ---------------------------------------------------------------- planned legs & ETA (V1.0-B)
+
+
+class PlannedLeg(Base):
+    """Booked-but-not-operated legs — the plan the ETA model predicts against."""
+
+    __tablename__ = "fact_planned_legs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    shipment_id: Mapped[str] = mapped_column(String(30), index=True)
+    leg_sequence: Mapped[int] = mapped_column(Integer)
+    transport_mode: Mapped[str] = mapped_column(String(10))
+    origin_facility: Mapped[str] = mapped_column(String(10))
+    destination_facility: Mapped[str] = mapped_column(String(10))
+    carrier_code: Mapped[str] = mapped_column(String(40))
+    planned_depart_ts: Mapped[str] = mapped_column(String(30))
+    planned_arrive_ts: Mapped[str] = mapped_column(String(30))
+    basis: Mapped[str] = mapped_column(String(80))  # which schedule template built it
+
+    __table_args__ = {"sqlite_autoincrement": True}

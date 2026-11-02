@@ -489,3 +489,50 @@ RAISE_ALERT_SPEC = ToolSpec(
     },
     executor=tool_raise_alert,
 )
+
+
+# --------------------------------------------------------------------------
+# predict_eta: empirical-quantile ETA for booked orders (V1.0-B)
+
+
+async def tool_predict_eta(shipment_id: str) -> ToolResult:
+    from app.tracking.eta import predict_eta
+
+    conn = sqlite3.connect(get_settings().db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        result = predict_eta(conn, shipment_id)
+    finally:
+        conn.close()
+    if result is None:
+        return ToolResult(
+            summary="no planned legs",
+            payload={"error": f"{shipment_id} has no planned legs (not booked via workbench)"},
+            llm_digest=f"{shipment_id} has no planned chain to predict against — book it via the order workbench first.",
+        )
+
+    e2e_h = result["eta_end_to_end_min"] / 60.0
+    risky = [l for l in result["legs"] if l["at_risk"]]
+    digest = (
+        f"ETA prediction ({result['method']}) for {shipment_id}: "
+        f"end-to-end P50 {e2e_h / 24:.1f} d from booking"
+        + (f"; {len(risky)} leg(s) at risk: " + ", ".join(l["lane"] for l in risky) if risky else "; no legs flagged at risk")
+        + ". Per-leg P50/P80/P95 delay quantiles come from the empirical history of the same mode+lane."
+    )
+    return ToolResult(
+        summary=f"P50 {e2e_h / 24:.1f} d · {'at risk' if result['at_risk'] else 'on plan'}",
+        payload=result,
+        llm_digest=digest,
+    )
+
+
+PREDICT_ETA_SPEC = ToolSpec(
+    name="predict_eta",
+    description="Predict end-to-end ETA for a booked order using empirical delay quantiles (P50/P80/P95) per mode+lane from operating history.",
+    parameters={
+        "type": "object",
+        "properties": {"shipment_id": {"type": "string"}},
+        "required": ["shipment_id"],
+    },
+    executor=tool_predict_eta,
+)

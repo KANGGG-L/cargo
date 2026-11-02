@@ -201,6 +201,28 @@ def transition(shipment_id: str, req: TransitionRequest, db=Depends(get_db)):
                         status_code=409,
                         detail="Dangerous goods shipments require a DG_DECL document before booking",
                     )
+            # build the planned multimodal chain — the schedule the ETA model and
+            # the map predict against until real milestones replace it
+            conn.row_factory = sqlite3.Row
+            shipment = dict(conn.execute(
+                "SELECT * FROM dim_shipments WHERE shipment_id = ?", (shipment_id,)
+            ).fetchone())
+            booking_ts = shipment["booking_ts"]
+            from app.tracking.eta import build_planned_legs
+
+            planned = build_planned_legs(dict(shipment), booking_ts)
+            conn.execute("DELETE FROM fact_planned_legs WHERE shipment_id = ?", (shipment_id,))
+            conn.executemany(
+                """
+                INSERT INTO fact_planned_legs (shipment_id, leg_sequence, transport_mode,
+                  origin_facility, destination_facility, carrier_code,
+                  planned_depart_ts, planned_arrive_ts, basis)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [(shipment_id, p["leg_sequence"], p["transport_mode"], p["origin_facility"],
+                  p["destination_facility"], p["carrier_code"], p["planned_depart_ts"],
+                  p["planned_arrive_ts"], p["basis"]) for p in planned],
+            )
         if req.to == "IN_PROGRESS":
             rcs = conn.execute(
                 "SELECT 1 FROM fact_milestone_events WHERE shipment_id = ? AND code = 'RCS'",
@@ -221,6 +243,25 @@ def transition(shipment_id: str, req: TransitionRequest, db=Depends(get_db)):
         return {"shipment_id": shipment_id, "status": req.to}
     finally:
         conn.close()
+
+
+@router.get("/{shipment_id}/eta")
+def order_eta(shipment_id: str, db=Depends(get_db)):
+    """Empirical-quantile ETA for a booked order (per leg + end-to-end)."""
+    from app.tracking.eta import predict_eta
+
+    conn = _rw()
+    conn.row_factory = sqlite3.Row
+    try:
+        result = predict_eta(conn, shipment_id)
+    finally:
+        conn.close()
+    if result is None:
+        raise HTTPException(
+            status_code=409,
+            detail="no planned legs — transition the order to BOOKED first",
+        )
+    return result
 
 
 @router.post("/{shipment_id}/awb")

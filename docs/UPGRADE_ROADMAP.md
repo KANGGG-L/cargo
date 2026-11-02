@@ -128,6 +128,18 @@ F5 订单 ──► F6 门户 / F7 文档 ──► F8 结算
 
 dim_milestone_codes、fact_milestones_plan、fact_milestone_events、fact_alert_rules、fact_alerts、dim_locations、dim_subscriptions、notification_outbox、ingest_log、ingest_rejects、dim_awb、dim_users、dim_documents、fact_charge_lines、fact_invoices(15 张含计数更正)。
 
+## 实施状态(2026-11-03 更新)
+
+| Release | 状态 | 提交 |
+|---|---|---|
+| v0.2(F1-F4 + 彩排) | ✅ 已交付 | 2e65d87 / 76fdc70 / dd536e3 / e84b382 / f7b5c07 |
+| v0.3(F5-F8) | ✅ 已交付 | b8a55ed / aedb4f8 / 841fbb3 |
+| v1.0-A 链路模拟引擎 chain-fifo-v1 | ✅ 已交付(超出现计划:参数化启发式已替换) | c476866 |
+| v1.0-B 计划链路 + 经验分位数 ETA | ✅ 已交付(predict_eta 第六工具) | d5bdf3b |
+| v1.0-C 运营时钟(时间驱动事件管线) | ✅ 已交付(超出现计划) | 6cf2221 |
+| v1.0-D CI + Dockerfile + compose | ✅ 已交付 | 2f454c0 |
+| v1.0 真实 ADS-B/AIS 接入、多租户、Postgres | 未做(接口契约已备:模拟器与 FSU 解析层可直换) | — |
+
 ## 面试叙事映射(升级后)
 
 - F1/F4:GT 面试讲"我懂 Cargo iQ/FSU 里程碑体系与数据脏现实"(行业语言)

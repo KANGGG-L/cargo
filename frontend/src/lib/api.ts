@@ -96,8 +96,59 @@ async function getJson<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export interface ShipmentListItem {
+  shipment_id: string;
+  transport_chain_type: string;
+  cargo_category: string;
+  status: string;
+  origin_location: string;
+  destination_location: string;
+  total_chargeable_weight_kg: number;
+  contracted_revenue_usd: number;
+  booking_ts: string;
+  customer_name: string;
+}
+
+export interface TraceLeg {
+  leg_id: string;
+  leg_sequence: number;
+  transport_mode: string;
+  origin_facility: string;
+  destination_facility: string;
+  carrier_code: string;
+  voyage_flight_no: string;
+  planned_depart_ts: string;
+  actual_depart_ts: string;
+  planned_arrive_ts: string;
+  actual_arrive_ts: string;
+  delay_minutes: number;
+  distance_km: number;
+  allocated_cost_usd: number;
+  leg_status: string;
+}
+
+export interface TracePayload {
+  shipment: ShipmentListItem & {
+    estimated_cost_usd: number;
+    actual_cost_usd: number;
+    region: string;
+  };
+  legs: TraceLeg[];
+}
+
+export interface SankeyPayload {
+  nodes: { name: string }[];
+  links: { source: string; target: string; value: number }[];
+}
+
 export const api = {
   overview: () => getJson<OverviewPayload>("/api/analytics/overview"),
   trends: () => getJson<TrendsPayload>("/api/analytics/trends"),
   network: () => getJson<NetworkPayload>("/api/analytics/network"),
+  shipments: (chain?: string, status?: string) =>
+    getJson<ShipmentListItem[]>(
+      `/api/shipments?limit=60${chain ? `&chain=${chain}` : ""}${status ? `&status=${status}` : ""}`
+    ),
+  trace: (id: string) => getJson<TracePayload>(`/api/shipments/${id}/trace`),
+  sankey: () => getJson<SankeyPayload>("/api/shipments/flows/sankey?min_legs=100"),
 };

@@ -23,6 +23,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Control Tower" },
   { href: "/network", label: "Network" },
   { href: "/alerts", label: "Alerts" },
+  { href: "/ingest", label: "Ingest" },
   { href: "/agent", label: "AI Agent" },
 ];
 

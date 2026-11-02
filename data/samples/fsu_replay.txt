@@ -1,0 +1,11 @@
+# FSU replay sample — HKG cargo feed
+# Format: FSU|<milestone_code>|<shipment_id>|<station>|<ISO-8601 ts>
+# This file intentionally contains: a genuine late report (resolves alert AL-001043),
+# out-of-order lines (listed newer-than-first), duplicates, and two rejects.
+FSU|ARR|SHP-2025-007919|FRA|2026-10-30T09:37:43Z
+FSU|DLV|SHP-2025-007904|FRA|2026-11-01T08:22:00Z
+FSU|DLV|SHP-2025-007904|FRA|2026-11-01T08:22:00Z
+FSU|DEP|SHP-2025-006212|HKG|2026-07-04T02:03:31Z
+FSU|ARR|SHP-2025-006212|SYD|2026-07-04T07:29:31Z
+FSU|XXX|SHP-2025-006212|HKG|2026-07-04T02:03:31Z
+FSU|ARR|SHP-9999-000001|LAX|2026-07-04T02:03:31Z

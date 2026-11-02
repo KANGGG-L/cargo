@@ -293,3 +293,29 @@ class Alert(Base):
     updated_ts: Mapped[str] = mapped_column(String(30))
     assignee: Mapped[str | None] = mapped_column(String(40), nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+# ---------------------------------------------------------------- ingest (F4)
+
+
+class IngestLog(Base):
+    __tablename__ = "ingest_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    source_name: Mapped[str] = mapped_column(String(60))
+    raw_chars: Mapped[int] = mapped_column(Integer)
+    parsed: Mapped[int] = mapped_column(Integer)
+    ingested: Mapped[int] = mapped_column(Integer)
+    duplicates: Mapped[int] = mapped_column(Integer)
+    rejected: Mapped[int] = mapped_column(Integer)
+    processed_ts: Mapped[str] = mapped_column(String(30))
+
+
+class IngestReject(Base):
+    __tablename__ = "ingest_rejects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ingest_id: Mapped[int] = mapped_column(Integer, index=True)
+    line_no: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(120))
+    raw_line: Mapped[str] = mapped_column(String(200))

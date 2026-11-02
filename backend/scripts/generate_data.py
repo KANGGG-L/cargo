@@ -96,6 +96,9 @@ def generate_customers():
 def generate_operational_data(customers):
     shipments = []
     legs = []
+    milestone_plans = []
+    milestone_events = []
+    missing_event_count = 0
 
     chain_types = [
         ("SEA_AIR_TRUCK", 0.40),
@@ -447,7 +450,14 @@ def generate_operational_data(customers):
 
         legs.extend(shipment_legs)
 
-    return shipments, legs
+        plans, events, dropped = build_milestones(shipments[-1], shipment_legs, s_idx)
+        milestone_plans.extend(plans)
+        milestone_events.extend(events)
+        missing_event_count += dropped
+
+    print(f"[INFO] Milestones: {len(milestone_plans)} planned, "
+          f"{len(milestone_events)} events, {missing_event_count} injected-missing")
+    return shipments, legs, milestone_plans, milestone_events
 
 
 def generate_air_kpis():
@@ -646,6 +656,103 @@ def generate_truck_kpis():
     return records
 
 
+def generate_milestone_codes():
+    return [
+        {"code": "BKD", "name": "Booked", "mode": "SHIPMENT", "seq_group": 0,
+         "description": "Booking confirmed, AWB/BK number allocated."},
+        {"code": "RCS", "name": "Ready for Carriage", "mode": "SHIPMENT", "seq_group": 1,
+         "description": "Cargo and documents accepted by the carrier/agent at origin."},
+        {"code": "DEP", "name": "Departed", "mode": "LEG", "seq_group": 2,
+         "description": "Leg departed (flight/vessel/truck)."},
+        {"code": "ARR", "name": "Arrived", "mode": "LEG", "seq_group": 3,
+         "description": "Leg arrived at destination facility."},
+        {"code": "NFD", "name": "Notified for Delivery", "mode": "SHIPMENT", "seq_group": 4,
+         "description": "Consignee notified; cargo ready for pickup/delivery."},
+        {"code": "DLV", "name": "Delivered", "mode": "SHIPMENT", "seq_group": 5,
+         "description": "Cargo delivered and signed for (POD)."},
+    ]
+
+
+def generate_alert_rules():
+    return [
+        {"rule_id": "R1", "name": "Delivery event missing",
+         "rule_type": "missing_event", "code": "DLV", "threshold_minutes": 1440,
+         "severity": "high"},
+        {"rule_id": "R2", "name": "Arrival event missing",
+         "rule_type": "missing_event", "code": "ARR", "threshold_minutes": 720,
+         "severity": "high"},
+        {"rule_id": "R3", "name": "Departure delay over threshold",
+         "rule_type": "delay_over", "code": "DEP", "threshold_minutes": 120,
+         "severity": "medium"},
+        {"rule_id": "R4", "name": "Arrival delay over threshold",
+         "rule_type": "delay_over", "code": "ARR", "threshold_minutes": 240,
+         "severity": "high"},
+    ]
+
+
+def _dedupe(code: str, shipment_id: str, leg_id: str, ts: str) -> str:
+    import hashlib
+
+    return hashlib.sha1(f"{code}|{shipment_id}|{leg_id or ''}|{ts}".encode()).hexdigest()
+
+
+def _iso(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def build_milestones(shipment, legs, s_idx):
+    """Derive planned milestones + actual events from one shipment's legs.
+
+    ~3% of actual events are dropped (missing-scan material for the rule engine).
+    """
+    plans, events = [], []
+    sid = shipment["shipment_id"]
+    first, last = legs[0], legs[-1]
+
+    def add_plan(code, leg_id, ts):
+        plans.append({"shipment_id": sid, "leg_id": leg_id, "code": code,
+                      "planned_ts": _iso(ts)})
+
+    def add_event(code, leg_id, ts):
+        events.append({"shipment_id": sid, "leg_id": leg_id, "code": code,
+                       "event_ts": _iso(ts), "source": "generator",
+                       "dedupe_key": _dedupe(code, sid, leg_id, _iso(ts))})
+
+    add_plan("BKD", None, datetime.strptime(shipment["booking_ts"], "%Y-%m-%dT%H:%M:%SZ"))
+    add_event("BKD", None, datetime.strptime(shipment["booking_ts"], "%Y-%m-%dT%H:%M:%SZ"))
+
+    rcs_ts = datetime.strptime(first["planned_depart_ts"], "%Y-%m-%dT%H:%M:%SZ") - timedelta(hours=4)
+    add_plan("RCS", None, rcs_ts)
+    add_event("RCS", None, rcs_ts)
+
+    for leg in legs:
+        pdep = datetime.strptime(leg["planned_depart_ts"], "%Y-%m-%dT%H:%M:%SZ")
+        parr = datetime.strptime(leg["planned_arrive_ts"], "%Y-%m-%dT%H:%M:%SZ")
+        adep = datetime.strptime(leg["actual_depart_ts"], "%Y-%m-%dT%H:%M:%SZ")
+        aarr = datetime.strptime(leg["actual_arrive_ts"], "%Y-%m-%dT%H:%M:%SZ")
+        add_plan("DEP", leg["leg_id"], pdep)
+        add_plan("ARR", leg["leg_id"], parr)
+        add_event("DEP", leg["leg_id"], adep)
+        add_event("ARR", leg["leg_id"], aarr)
+
+    nfd_ts = datetime.strptime(last["planned_arrive_ts"], "%Y-%m-%dT%H:%M:%SZ") + timedelta(hours=2)
+    add_plan("NFD", None, nfd_ts)
+    if shipment["status"] != "EXCEPTION":
+        add_event("NFD", None, nfd_ts)
+
+    dlv_plan = datetime.strptime(last["planned_arrive_ts"], "%Y-%m-%dT%H:%M:%SZ")
+    dlv_actual = datetime.strptime(last["actual_arrive_ts"], "%Y-%m-%dT%H:%M:%SZ")
+    add_plan("DLV", None, dlv_plan)
+    add_event("DLV", None, dlv_actual)
+
+    # deterministic ~3% missing events (skip the very first shipment so tests have anchors)
+    if s_idx > 1:
+        kept = [e for e in events if random.random() > 0.03]
+        dropped = len(events) - len(kept)
+        return plans, kept, dropped
+    return plans, events, 0
+
+
 def generate_rate_cards():
     records = []
     zones = [
@@ -773,7 +880,7 @@ def main():
         customers,
     )
 
-    shipments, legs = generate_operational_data(customers)
+    shipments, legs, milestone_plans, milestone_events = generate_operational_data(customers)
     save_csv(
         "dim_shipments.csv",
         [
@@ -899,6 +1006,30 @@ def main():
             "effective_end_date",
         ],
         rate_cards,
+    )
+
+    save_csv(
+        "dim_milestone_codes.csv",
+        ["code", "name", "mode", "seq_group", "description"],
+        generate_milestone_codes(),
+    )
+
+    save_csv(
+        "fact_alert_rules.csv",
+        ["rule_id", "name", "rule_type", "code", "threshold_minutes", "severity"],
+        generate_alert_rules(),
+    )
+
+    save_csv(
+        "fact_milestones_plan.csv",
+        ["shipment_id", "leg_id", "code", "planned_ts"],
+        milestone_plans,
+    )
+
+    save_csv(
+        "fact_milestone_events.csv",
+        ["shipment_id", "leg_id", "code", "event_ts", "source", "dedupe_key"],
+        milestone_events,
     )
 
     events = generate_disruption_events()

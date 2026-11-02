@@ -1,0 +1,5 @@
+rule_id,name,rule_type,code,threshold_minutes,severity
+R1,Delivery event missing,missing_event,DLV,1440,high
+R2,Arrival event missing,missing_event,ARR,720,high
+R3,Departure delay over threshold,delay_over,DEP,120,medium
+R4,Arrival delay over threshold,delay_over,ARR,240,high

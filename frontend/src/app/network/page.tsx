@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import { api } from "@/lib/api";
 import type {
+  MilestoneRow,
   SankeyPayload,
   ShipmentListItem,
   TraceLeg,
@@ -43,6 +44,7 @@ export default function NetworkPage() {
   const [shipments, setShipments] = useState<ShipmentListItem[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [trace, setTrace] = useState<TracePayload | null>(null);
+  const [milestones, setMilestones] = useState<MilestoneRow[] | null>(null);
   const [sankey, setSankey] = useState<SankeyPayload | null>(null);
 
   useEffect(() => {
@@ -57,7 +59,9 @@ export default function NetworkPage() {
   useEffect(() => {
     if (!selectedId) return;
     setTrace(null);
+    setMilestones(null);
     api.trace(selectedId).then(setTrace).catch(() => setTrace(null));
+    api.milestones(selectedId).then((r) => setMilestones(r.milestones)).catch(() => setMilestones(null));
   }, [selectedId]);
 
   useEffect(() => {
@@ -184,9 +188,26 @@ export default function NetworkPage() {
                   ${Math.round(trace.shipment.contracted_revenue_usd).toLocaleString()}
                 </span>
               </div>
+
+              {/* shipment-level dual-track milestones */}
+              {milestones && (
+                <div className="mb-4 flex flex-wrap gap-1.5">
+                  {milestones
+                    .filter((m) => m.leg_id === null)
+                    .map((m, i) => (
+                      <MilestoneChip key={`${m.code}-${i}`} m={m} />
+                    ))}
+                </div>
+              )}
+
               <div className="space-y-0">
                 {trace.legs.map((leg, i) => (
-                  <LegRow key={leg.leg_id} leg={leg} last={i === trace.legs.length - 1} />
+                  <LegRow
+                    key={leg.leg_id}
+                    leg={leg}
+                    last={i === trace.legs.length - 1}
+                    legMilestones={milestones?.filter((m) => m.leg_id === leg.leg_id)}
+                  />
                 ))}
               </div>
             </>
@@ -205,7 +226,40 @@ export default function NetworkPage() {
   );
 }
 
-function LegRow({ leg, last }: { leg: TraceLeg; last: boolean }) {
+function fmtShort(ts: string): string {
+  return ts.slice(5, 16).replace("T", " ");
+}
+
+const DEV_STYLE: Record<string, string> = {
+  ON_TIME: "border-emerald-800 bg-emerald-950/40 text-emerald-300",
+  LATE: "border-amber-800 bg-amber-950/40 text-amber-300",
+  MISSING: "border-rose-800 bg-rose-950/40 text-rose-300",
+};
+
+function MilestoneChip({ m }: { m: MilestoneRow }) {
+  const cls = DEV_STYLE[m.deviation] ?? DEV_STYLE.MISSING;
+  return (
+    <span className={`rounded-md border px-2 py-1 text-[10px] leading-tight ${cls}`}>
+      <span className="font-bold">{m.code}</span>
+      <span className="mx-1 opacity-60">plan {fmtShort(m.planned_ts)}</span>
+      {m.deviation === "MISSING" ? (
+        <span className="font-semibold">NOT REPORTED</span>
+      ) : (
+        <span>act {fmtShort(m.actual_ts!)}</span>
+      )}
+    </span>
+  );
+}
+
+function LegRow({
+  leg,
+  last,
+  legMilestones,
+}: {
+  leg: TraceLeg;
+  last: boolean;
+  legMilestones?: MilestoneRow[];
+}) {
   const style = MODE_STYLE[leg.transport_mode] ?? MODE_STYLE.TRUCK;
   const delay = fmtDelay(leg.delay_minutes);
   return (
@@ -218,7 +272,7 @@ function LegRow({ leg, last }: { leg: TraceLeg; last: boolean }) {
         {!last && <div className="w-px flex-1 bg-slate-700" />}
       </div>
       {/* content */}
-      <div className={`min-w-0 flex-1 pb-5 ${last ? "" : ""}`}>
+      <div className="min-w-0 flex-1 pb-5">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className={`text-xs font-bold uppercase tracking-wide ${style.label}`}>
             {leg.transport_mode} · LEG {leg.leg_sequence}
@@ -240,6 +294,13 @@ function LegRow({ leg, last }: { leg: TraceLeg; last: boolean }) {
             {leg.leg_status}
           </span>
         </div>
+        {legMilestones && legMilestones.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {legMilestones.map((m, i) => (
+              <MilestoneChip key={`${m.code}-${i}`} m={m} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

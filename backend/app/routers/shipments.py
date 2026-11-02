@@ -36,6 +36,38 @@ def list_shipments(
     return [dict(r) for r in rows]
 
 
+@router.get("/{shipment_id}/milestones")
+def shipment_milestones(shipment_id: str, db: Session = Depends(get_db)):
+    """Dual-track milestone view: planned baseline vs reported events, with deviations."""
+    exists = db.execute(
+        text("SELECT 1 FROM dim_shipments WHERE shipment_id = :sid"), {"sid": shipment_id}
+    ).scalar()
+    if not exists:
+        raise HTTPException(status_code=404, detail="shipment not found")
+
+    rows = db.execute(
+        text(
+            """
+            SELECT p.code, p.leg_id, p.planned_ts,
+                   e.event_ts AS actual_ts, e.source AS event_source,
+                   CASE
+                     WHEN e.event_ts IS NULL THEN 'MISSING'
+                     WHEN (julianday(e.event_ts) - julianday(p.planned_ts)) * 1440.0 > 60 THEN 'LATE'
+                     ELSE 'ON_TIME'
+                   END AS deviation
+            FROM fact_milestones_plan p
+            LEFT JOIN fact_milestone_events e
+              ON e.shipment_id = p.shipment_id AND e.code = p.code
+             AND ((e.leg_id IS NULL AND p.leg_id IS NULL) OR e.leg_id = p.leg_id)
+            WHERE p.shipment_id = :sid
+            ORDER BY p.planned_ts, p.code
+            """
+        ),
+        {"sid": shipment_id},
+    ).mappings().all()
+    return {"shipment_id": shipment_id, "milestones": [dict(r) for r in rows]}
+
+
 @router.get("/{shipment_id}/trace")
 def shipment_trace(shipment_id: str, db: Session = Depends(get_db)):
     shipment = db.execute(

@@ -28,6 +28,9 @@ with improvement suggestions. Use for "why did X drop / what's wrong".
 rate shock) with quantified impact and mitigation actions.
 - quote_booking: freight quotes by lane/mode/weight break, including sea-air \
 combinations, with transit-time estimates.
+- raise_alert: create an exception ticket in the operations workbench. After a \
+diagnosis finds a concrete problem tied to a specific shipment, offer to raise \
+an alert (with evidence in `detail`) so the team can action it.
 
 If the question is outside the control tower's scope, say so briefly.
 """

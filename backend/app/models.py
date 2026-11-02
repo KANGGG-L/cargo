@@ -218,3 +218,78 @@ class PublicScfiOceanRateWeekly(Base):
     shanghai_usec_usd_feu: Mapped[float] = mapped_column(Float)
     shanghai_seasia_usd_teu: Mapped[float] = mapped_column(Float)
     data_source: Mapped[str] = mapped_column(String(50))
+
+
+# ---------------------------------------------------------------- milestones & alerts (F1)
+
+
+class MilestoneCode(Base):
+    """Cargo-iQ-style milestone dictionary across all three modes."""
+
+    __tablename__ = "dim_milestone_codes"
+
+    code: Mapped[str] = mapped_column(String(8), primary_key=True)
+    name: Mapped[str] = mapped_column(String(40))
+    mode: Mapped[str] = mapped_column(String(10))  # SHIPMENT | SEA | AIR | TRUCK
+    seq_group: Mapped[int] = mapped_column(Integer)
+    description: Mapped[str] = mapped_column(String(200))
+
+
+class MilestonePlan(Base):
+    """Planned milestone timestamps — the schedule baseline alerts are measured against."""
+
+    __tablename__ = "fact_milestones_plan"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    shipment_id: Mapped[str] = mapped_column(String(30), index=True)
+    leg_id: Mapped[str | None] = mapped_column(String(24), nullable=True)  # null = shipment level
+    code: Mapped[str] = mapped_column(String(8))
+    planned_ts: Mapped[str] = mapped_column(String(30))
+
+    __table_args__ = (Index("ix_mplan_shipment", "shipment_id", "code"),)
+
+
+class MilestoneEvent(Base):
+    """Actually reported milestone events (generator, FSU ingest, or agent)."""
+
+    __tablename__ = "fact_milestone_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    shipment_id: Mapped[str] = mapped_column(String(30), index=True)
+    leg_id: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    code: Mapped[str] = mapped_column(String(8))
+    event_ts: Mapped[str] = mapped_column(String(30))
+    source: Mapped[str] = mapped_column(String(12))  # generator | fsu | agent
+    dedupe_key: Mapped[str] = mapped_column(String(64), unique=True)
+
+    __table_args__ = (Index("ix_mevent_shipment", "shipment_id", "code"),)
+
+
+class AlertRule(Base):
+    __tablename__ = "fact_alert_rules"
+
+    rule_id: Mapped[str] = mapped_column(String(12), primary_key=True)
+    name: Mapped[str] = mapped_column(String(60))
+    rule_type: Mapped[str] = mapped_column(String(20))  # missing_event | delay_over
+    code: Mapped[str] = mapped_column(String(8))  # milestone code the rule watches
+    threshold_minutes: Mapped[int] = mapped_column(Integer)
+    severity: Mapped[str] = mapped_column(String(10))  # info | medium | high
+
+
+class Alert(Base):
+    """Exception tickets produced by the rule engine, the agent, or ingest."""
+
+    __tablename__ = "fact_alerts"
+
+    alert_id: Mapped[str] = mapped_column(String(16), primary_key=True)  # AL-000001
+    shipment_id: Mapped[str] = mapped_column(String(30), index=True)
+    rule_id: Mapped[str | None] = mapped_column(String(12), nullable=True)
+    source: Mapped[str] = mapped_column(String(10))  # rules | agent | ingest
+    severity: Mapped[str] = mapped_column(String(10))
+    title: Mapped[str] = mapped_column(String(120))
+    detail: Mapped[str] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(12))  # OPEN | ACKNOWLEDGED | RESOLVED | CLOSED
+    created_ts: Mapped[str] = mapped_column(String(30))
+    updated_ts: Mapped[str] = mapped_column(String(30))
+    assignee: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    resolution_note: Mapped[str | None] = mapped_column(String(500), nullable=True)

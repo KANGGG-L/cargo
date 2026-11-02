@@ -170,6 +170,37 @@ export interface SankeyPayload {
   links: { source: string; target: string; value: number }[];
 }
 
+export interface AlertItem {
+  alert_id: string;
+  shipment_id: string;
+  rule_id: string | null;
+  source: string;
+  severity: string;
+  title: string;
+  detail: string;
+  status: string;
+  created_ts: string;
+  updated_ts: string;
+  assignee: string | null;
+  resolution_note: string | null;
+  transport_chain_type?: string;
+  destination_location?: string;
+}
+
+export interface AlertSummary {
+  by_status: Record<string, number>;
+  open_by_severity: Record<string, number>;
+}
+
+export interface MilestoneRow {
+  code: string;
+  leg_id: string | null;
+  planned_ts: string;
+  actual_ts: string | null;
+  event_source: string | null;
+  deviation: "MISSING" | "LATE" | "ON_TIME";
+}
+
 export const api = {
   overview: () => getJson<OverviewPayload>("/api/analytics/overview"),
   trends: () => getJson<TrendsPayload>("/api/analytics/trends"),
@@ -180,4 +211,24 @@ export const api = {
     ),
   trace: (id: string) => getJson<TracePayload>(`/api/shipments/${id}/trace`),
   sankey: () => getJson<SankeyPayload>("/api/shipments/flows/sankey?min_legs=100"),
+  milestones: (id: string) =>
+    getJson<{ shipment_id: string; milestones: MilestoneRow[] }>(
+      `/api/shipments/${id}/milestones`
+    ),
+  alerts: (status?: string, severity?: string) =>
+    getJson<AlertItem[]>(
+      `/api/alerts?limit=200${status ? `&status=${status}` : ""}${severity ? `&severity=${severity}` : ""}`
+    ),
+  alertSummary: () => getJson<AlertSummary>("/api/alerts/summary"),
+  syncAlerts: () =>
+    fetch(`${API_BASE}/api/alerts/sync`, { method: "POST" }).then((r) => r.json()),
+  transitionAlert: (id: string, to: string, note?: string, assignee?: string) =>
+    fetch(`${API_BASE}/api/alerts/${id}/transition`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, note, assignee }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error((await r.json()).detail ?? String(r.status));
+      return r.json();
+    }),
 };

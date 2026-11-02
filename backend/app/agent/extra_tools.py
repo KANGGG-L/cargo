@@ -5,6 +5,7 @@ same question always produces the same evidence (demo + interview safe).
 """
 
 import sqlite3
+from datetime import datetime, timezone
 from typing import Any
 
 from app.agent.tools import ToolResult, ToolSpec
@@ -448,4 +449,63 @@ QUOTE_SPEC = ToolSpec(
         "required": ["origin", "destination", "weight_kg"],
     },
     executor=tool_quote_booking,
+)
+
+
+# --------------------------------------------------------------------------
+# raise_alert: agent findings → exception ticket (closes the analysis→action loop)
+
+
+async def tool_raise_alert(
+    shipment_id: str, title: str, detail: str = "", severity: str = "medium"
+) -> ToolResult:
+    conn = sqlite3.connect(get_settings().db_path)
+    try:
+        exists = conn.execute(
+            "SELECT 1 FROM dim_shipments WHERE shipment_id = ?", (shipment_id,)
+        ).fetchone()
+        if not exists:
+            return ToolResult(
+                summary="shipment not found",
+                payload={"error": f"unknown shipment {shipment_id}"},
+                llm_digest=f"Cannot raise alert: shipment {shipment_id} does not exist.",
+            )
+        if severity not in ("info", "medium", "high"):
+            severity = "medium"
+        n = int((conn.execute("SELECT MAX(alert_id) FROM fact_alerts").fetchone()[0] or "AL-000000").split("-")[1]) + 1
+        alert_id = f"AL-{n:06d}"
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn.execute(
+            """
+            INSERT INTO fact_alerts (alert_id, shipment_id, rule_id, source, severity,
+                                     title, detail, status, created_ts, updated_ts)
+            VALUES (?, ?, NULL, 'agent', ?, ?, ?, 'OPEN', ?, ?)
+            """,
+            (alert_id, shipment_id, severity, title[:120], detail[:500], now, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return ToolResult(
+        summary=f"{alert_id} · {severity}",
+        payload={"alert_id": alert_id, "shipment_id": shipment_id, "severity": severity, "title": title},
+        llm_digest=f"Alert {alert_id} created (severity {severity}) for {shipment_id}: {title}. The operations workbench will pick it up.",
+    )
+
+
+RAISE_ALERT_SPEC = ToolSpec(
+    name="raise_alert",
+    description="Create an exception ticket in the alert workbench from a diagnosis finding, so operations can act on it.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "shipment_id": {"type": "string"},
+            "title": {"type": "string", "description": "One-line summary of the exception."},
+            "detail": {"type": "string", "description": "Evidence and recommended action."},
+            "severity": {"type": "string", "enum": ["info", "medium", "high"]},
+        },
+        "required": ["shipment_id", "title"],
+    },
+    executor=tool_raise_alert,
 )

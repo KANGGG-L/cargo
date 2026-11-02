@@ -169,10 +169,10 @@ QUERY_DATA_SPEC = ToolSpec(
 
 
 def get_tool_specs() -> list[ToolSpec]:
-    """All four specialist tools behind the single agent loop."""
-    from app.agent.extra_tools import DIAGNOSE_SPEC, QUOTE_SPEC, SIMULATE_SPEC
+    """All five specialist tools behind the single agent loop."""
+    from app.agent.extra_tools import DIAGNOSE_SPEC, QUOTE_SPEC, RAISE_ALERT_SPEC, SIMULATE_SPEC
 
-    return [QUERY_DATA_SPEC, DIAGNOSE_SPEC, SIMULATE_SPEC, QUOTE_SPEC]
+    return [QUERY_DATA_SPEC, DIAGNOSE_SPEC, SIMULATE_SPEC, QUOTE_SPEC, RAISE_ALERT_SPEC]
 
 
 def openai_tool_schemas(specs: list[ToolSpec]) -> list[dict[str, Any]]:

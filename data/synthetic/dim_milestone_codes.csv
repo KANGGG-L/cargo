@@ -1,0 +1,7 @@
+code,name,mode,seq_group,description
+BKD,Booked,SHIPMENT,0,"Booking confirmed, AWB/BK number allocated."
+RCS,Ready for Carriage,SHIPMENT,1,Cargo and documents accepted by the carrier/agent at origin.
+DEP,Departed,LEG,2,Leg departed (flight/vessel/truck).
+ARR,Arrived,LEG,3,Leg arrived at destination facility.
+NFD,Notified for Delivery,SHIPMENT,4,Consignee notified; cargo ready for pickup/delivery.
+DLV,Delivered,SHIPMENT,5,Cargo delivered and signed for (POD).

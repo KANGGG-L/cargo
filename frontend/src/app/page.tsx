@@ -1,69 +1,250 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useEffect, useState } from "react";
+import type { EChartsOption } from "echarts";
+import { api } from "@/lib/api";
+import type { NetworkPayload, OverviewPayload, TrendsPayload } from "@/lib/api";
+import ChartPanel, { DARK_AXIS, DARK_LEGEND } from "@/components/ChartPanel";
+import KpiCard from "@/components/KpiCard";
+
+const CATEGORY_COLOR: Record<string, string> = {
+  WEATHER: "bg-rose-950/60 border-rose-800 text-rose-300",
+  PORT_CONGESTION: "bg-amber-950/60 border-amber-800 text-amber-300",
+  COMMERCIAL_MISCONFIGURATION: "bg-fuchsia-950/60 border-fuchsia-800 text-fuchsia-300",
+};
+
+export default function OverviewPage() {
+  const [overview, setOverview] = useState<OverviewPayload | null>(null);
+  const [trends, setTrends] = useState<TrendsPayload | null>(null);
+  const [network, setNetwork] = useState<NetworkPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([api.overview(), api.trends(), api.network()])
+      .then(([o, t, n]) => {
+        setOverview(o);
+        setTrends(t);
+        setNetwork(n);
+      })
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-rose-900 bg-rose-950/40 p-6 text-rose-300">
+        Backend unreachable at <code>{process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"}</code> —
+        start it with <code>uvicorn app.main:app --port 8000</code>.
+        <div className="mt-2 text-xs text-rose-400/70">{error}</div>
+      </div>
+    );
+  }
+
+  if (!overview || !trends || !network) {
+    return (
+      <div className="animate-pulse text-sm text-slate-500">
+        Loading control tower…
+      </div>
+    );
+  }
+
+  const k = overview.kpis;
+  const dailyOption: EChartsOption = {
+    legend: { ...DARK_LEGEND, data: ["Air OTP %", "Load Factor %"] },
+    grid: { left: 40, right: 40, top: 30, bottom: 45 },
+    dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }],
+    xAxis: {
+      type: "category",
+      data: trends.daily.map((d) => d.date),
+      ...DARK_AXIS,
+    },
+    yAxis: [
+      { type: "value", min: 0, max: 100, ...DARK_AXIS },
+      { type: "value", ...DARK_AXIS },
+    ],
+    series: [
+      {
+        name: "Air OTP %",
+        type: "line",
+        showSymbol: false,
+        lineStyle: { width: 1.5, color: "#22d3ee" },
+        itemStyle: { color: "#22d3ee" },
+        data: trends.daily.map((d) => d.air_otp_pct),
+        markArea: {
+          itemStyle: { color: "rgba(244,63,94,0.12)" },
+          data: [[{ name: "Typhoon", xAxis: "2025-09-15" }, { xAxis: "2025-09-21" }]],
+        },
+      },
+      {
+        name: "Load Factor %",
+        type: "line",
+        yAxisIndex: 1,
+        showSymbol: false,
+        lineStyle: { width: 1.5, color: "#34d399" },
+        itemStyle: { color: "#34d399" },
+        data: trends.daily.map((d) => d.load_factor_pct),
+      },
+    ],
+    tooltip: { trigger: "axis" },
+  };
+
+  const monthlyOption: EChartsOption = {
+    legend: { ...DARK_LEGEND, data: ["Revenue $M", "Gross Margin %"] },
+    grid: { left: 45, right: 40, top: 30, bottom: 25 },
+    xAxis: { type: "category", data: trends.monthly.map((m) => m.month), ...DARK_AXIS },
+    yAxis: [
+      { type: "value", ...DARK_AXIS },
+      { type: "value", min: 0, max: 30, ...DARK_AXIS },
+    ],
+    series: [
+      {
+        name: "Revenue $M",
+        type: "bar",
+        itemStyle: { color: "#38bdf8", borderRadius: [3, 3, 0, 0] },
+        data: trends.monthly.map((m) => m.revenue_musd),
+      },
+      {
+        name: "Gross Margin %",
+        type: "line",
+        yAxisIndex: 1,
+        lineStyle: { width: 2, color: "#fbbf24" },
+        itemStyle: { color: "#fbbf24" },
+        data: trends.monthly.map((m) => m.gross_margin_pct),
+      },
+    ],
+    tooltip: { trigger: "axis" },
+  };
+
+  const modeOption: EChartsOption = {
+    legend: DARK_LEGEND,
+    series: [
+      {
+        type: "pie",
+        radius: ["45%", "72%"],
+        center: ["50%", "55%"],
+        label: { color: "#8b9bb4", formatter: "{b}\n{c} legs" },
+        data: network.mode_split.map((m, i) => ({
+          name: m.mode,
+          value: m.legs,
+          itemStyle: { color: ["#22d3ee", "#818cf8", "#34d399"][i % 3] },
+        })),
+      },
+    ],
+    tooltip: {},
+  };
+
+  const laneOption: EChartsOption = {
+    grid: { left: 60, right: 30, top: 10, bottom: 25 },
+    xAxis: { type: "value", ...DARK_AXIS },
+    yAxis: {
+      type: "category",
+      data: network.air_lanes.map((l) => `HKG-${l.dest}`).reverse(),
+      ...DARK_AXIS,
+    },
+    series: [
+      {
+        type: "bar",
+        itemStyle: { color: "#22d3ee", borderRadius: [0, 3, 3, 0] },
+        data: network.air_lanes.map((l) => l.tonnes).reverse(),
+      },
+    ],
+    tooltip: { trigger: "axis" },
+  };
+
+  const feederOption: EChartsOption = {
+    legend: { ...DARK_LEGEND, data: ["Avg Delay (h)", "Sea OTP %"] },
+    grid: { left: 60, right: 40, top: 30, bottom: 25 },
+    xAxis: { type: "category", data: network.feeder_ports.map((f) => f.port), ...DARK_AXIS },
+    yAxis: [
+      { type: "value", ...DARK_AXIS },
+      { type: "value", min: 50, max: 100, ...DARK_AXIS },
+    ],
+    series: [
+      {
+        name: "Avg Delay (h)",
+        type: "bar",
+        itemStyle: { color: "#818cf8", borderRadius: [3, 3, 0, 0] },
+        data: network.feeder_ports.map((f) => f.avg_delay_hours),
+      },
+      {
+        name: "Sea OTP %",
+        type: "line",
+        yAxisIndex: 1,
+        lineStyle: { width: 2, color: "#34d399" },
+        itemStyle: { color: "#34d399" },
+        data: network.feeder_ports.map((f) => f.sea_otp_pct),
+      },
+    ],
+    tooltip: { trigger: "axis" },
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="space-y-5">
+      {/* KPI row */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <KpiCard label="Air OTP (±15min)" value={k.air_otp_pct} unit="%" hint="flight leg level" />
+        <KpiCard label="E2E Shipment OTP" value={k.multimodal_otp_pct} unit="%" hint="±60 min tolerance" />
+        <KpiCard label="Cargo Load Factor" value={k.load_factor_pct} unit="%" hint="RTK / ATK, HKG network" />
+        <KpiCard label="Hub Dwell (avg)" value={k.avg_dwell_hours} unit="h" hint="feeder arrival → wheels up" />
+        <KpiCard label="Revenue (18 mo)" value={`$${k.total_revenue_musd}M`} hint={`${k.total_shipments.toLocaleString()} shipments · ${Math.round(k.total_tonnes).toLocaleString()} t`} />
+        <KpiCard label="Gross Margin" value={k.gross_margin_pct} unit="%" tone={k.gross_margin_pct > 15 ? "good" : "warn"} />
+      </div>
+
+      {/* Disruption banner */}
+      <div className="flex flex-wrap gap-2">
+        {overview.recent_disruptions.map((d) => (
+          <div
+            key={d.event_id}
+            className={`rounded-lg border px-3 py-1.5 text-xs ${CATEGORY_COLOR[d.event_category] ?? "bg-slate-800/60 border-slate-700 text-slate-300"}`}
+          >
+            <span className="font-semibold">{d.event_code}</span>
+            <span className="mx-2 opacity-50">·</span>
+            {d.primary_location}
+            <span className="mx-2 opacity-50">·</span>
+            {d.start_timestamp.slice(0, 10)} → {d.end_timestamp.slice(0, 10)}
+          </div>
+        ))}
+      </div>
+
+      {/* Charts */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <ChartPanel title="Daily Air Performance — OTP & Load Factor (typhoon window shaded)" option={dailyOption} height={320} />
+        <ChartPanel title="Monthly Revenue & Gross Margin" option={monthlyOption} height={320} />
+        <ChartPanel title="Transport Mode Split (legs)" option={modeOption} height={280} />
+        <ChartPanel title="Top Air Lanes by Carried Tonnes" option={laneOption} height={280} />
+        <ChartPanel title="Feeder Port Health (sea legs into HKG)" option={feederOption} height={280} />
+        <div className="rounded-xl border border-slate-800 bg-[#0f1729] p-4">
+          <h3 className="mb-3 text-sm font-semibold tracking-wide text-slate-300">
+            Chain Mix — Revenue by Routing Pattern
+          </h3>
+          <div className="space-y-3">
+            {network.chain_mix.map((c, i) => {
+              const max = Math.max(...network.chain_mix.map((x) => x.revenue_musd));
+              const colors = ["bg-cyan-500", "bg-indigo-500", "bg-emerald-500"];
+              return (
+                <div key={c.chain}>
+                  <div className="mb-1 flex justify-between text-xs text-slate-400">
+                    <span>{c.chain}</span>
+                    <span>
+                      ${c.revenue_musd}M · {c.shipments.toLocaleString()} shipments
+                    </span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-slate-800">
+                    <div
+                      className={`h-2 rounded-full ${colors[i % 3]}`}
+                      style={{ width: `${(c.revenue_musd / max) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
+            Sea-Air-Truck is the largest routing pattern by revenue — cargo arrives
+            by feeder barge into HKG, transits the hub and flies out on
+            long-haul freighters.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }

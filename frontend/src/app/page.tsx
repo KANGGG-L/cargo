@@ -2,15 +2,17 @@
 
 import { useEffect, useState } from "react";
 import type { EChartsOption } from "echarts";
+import { CircleAlert, TriangleAlert } from "lucide-react";
 import { api } from "@/lib/api";
 import type { NetworkPayload, OverviewPayload, TrendsPayload } from "@/lib/api";
-import ChartPanel, { DARK_AXIS, DARK_LEGEND } from "@/components/ChartPanel";
+import ChartPanel, { DARK_AXIS, DARK_LEGEND, SERIES_COLORS } from "@/components/ChartPanel";
 import KpiCard from "@/components/KpiCard";
 
-const CATEGORY_COLOR: Record<string, string> = {
-  WEATHER: "bg-rose-950/60 border-rose-800 text-rose-300",
-  PORT_CONGESTION: "bg-amber-950/60 border-amber-800 text-amber-300",
-  COMMERCIAL_MISCONFIGURATION: "bg-fuchsia-950/60 border-fuchsia-800 text-fuchsia-300",
+const CATEGORY_STYLE: Record<string, string> = {
+  WEATHER: "border-sky-200 bg-sky-50 text-sky-700",
+  PORT_CONGESTION: "border-amber-200 bg-amber-50 text-amber-700",
+  BORDER_CONGESTION: "border-amber-200 bg-amber-50 text-amber-700",
+  COMMERCIAL_MISCONFIGURATION: "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700",
 };
 
 export default function OverviewPage() {
@@ -31,23 +33,58 @@ export default function OverviewPage() {
 
   if (error) {
     return (
-      <div className="rounded-xl border border-rose-900 bg-rose-950/40 p-6 text-rose-300">
-        Backend unreachable at <code>{process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"}</code> —
-        start it with <code>uvicorn app.main:app --port 8000</code>.
-        <div className="mt-2 text-xs text-rose-400/70">{error}</div>
+      <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+        Backend unreachable at{" "}
+        <code>{process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000"}</code> — start it
+        with <code>uvicorn app.main:app --port 8000</code>.
+        <div className="mt-2 text-xs text-red-500/80">{error}</div>
       </div>
     );
   }
 
   if (!overview || !trends || !network) {
-    return (
-      <div className="animate-pulse text-sm text-slate-500">
-        Loading control tower…
-      </div>
-    );
+    return <div className="animate-pulse text-sm text-zinc-500">Loading control tower…</div>;
   }
 
   const k = overview.kpis;
+
+  const windowArea = (name: string, from: string, to: string) => ({
+    itemStyle: { color: "#f4f4f5" },
+    label: { color: "#a1a1aa", fontSize: 10 },
+    data: [[{ name, xAxis: from }, { xAxis: to }]],
+  });
+
+  const dailyOption: EChartsOption = {
+    legend: { ...DARK_LEGEND, data: ["Air OTP %", "Load Factor %"] },
+    grid: { left: 40, right: 40, top: 30, bottom: 45 },
+    dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }],
+    xAxis: { type: "category", data: trends.daily.map((d) => d.date), ...DARK_AXIS },
+    yAxis: [
+      { type: "value", min: 0, max: 100, ...DARK_AXIS },
+      { type: "value", ...DARK_AXIS },
+    ],
+    series: [
+      {
+        name: "Air OTP %",
+        type: "line",
+        showSymbol: false,
+        lineStyle: { width: 1.5, color: SERIES_COLORS[0] },
+        itemStyle: { color: SERIES_COLORS[0] },
+        data: trends.daily.map((d) => d.air_otp_pct),
+        markArea: windowArea("Typhoon", "2025-09-15", "2025-09-21"),
+      },
+      {
+        name: "Load Factor %",
+        type: "line",
+        yAxisIndex: 1,
+        showSymbol: false,
+        lineStyle: { width: 1.5, color: SERIES_COLORS[1] },
+        itemStyle: { color: SERIES_COLORS[1] },
+        data: trends.daily.map((d) => d.load_factor_pct),
+      },
+    ] as EChartsOption["series"],
+    tooltip: { trigger: "axis" },
+  };
 
   const truckOption: EChartsOption = {
     legend: { ...DARK_LEGEND, data: ["Truck OTP %", "Avg Crossing (min)"] },
@@ -63,24 +100,21 @@ export default function OverviewPage() {
         name: "Truck OTP %",
         type: "line",
         showSymbol: false,
-        lineStyle: { width: 1.5, color: "#34d399" },
-        itemStyle: { color: "#34d399" },
+        lineStyle: { width: 1.5, color: SERIES_COLORS[1] },
+        itemStyle: { color: SERIES_COLORS[1] },
         data: trends.daily_truck.map((d) => d.truck_otp_pct),
-        markArea: {
-          itemStyle: { color: "rgba(244,63,94,0.12)" },
-          data: [[{ name: "SZBP congestion", xAxis: "2025-11-10" }, { xAxis: "2025-11-24" }]],
-        },
+        markArea: windowArea("SZBP congestion", "2025-11-10", "2025-11-24"),
       },
       {
         name: "Avg Crossing (min)",
         type: "line",
         yAxisIndex: 1,
         showSymbol: false,
-        lineStyle: { width: 1.5, color: "#f59e0b" },
-        itemStyle: { color: "#f59e0b" },
+        lineStyle: { width: 1.5, color: SERIES_COLORS[3] },
+        itemStyle: { color: SERIES_COLORS[3] },
         data: trends.daily_truck.map((d) => d.avg_crossing_minutes),
       },
-    ],
+    ] as EChartsOption["series"],
     tooltip: { trigger: "axis" },
   };
 
@@ -96,60 +130,16 @@ export default function OverviewPage() {
       name: cor,
       type: "line" as const,
       showSymbol: false,
-      lineStyle: { width: 1.5 },
-      itemStyle: { color: ["#818cf8", "#f472b6", "#38bdf8", "#fbbf24"][i % 4] },
+      lineStyle: { width: 1.5, color: SERIES_COLORS[i % SERIES_COLORS.length] },
+      itemStyle: { color: SERIES_COLORS[i % SERIES_COLORS.length] },
       data: seaWeeks.map(
         (w) =>
           trends.weekly_sea.find((r) => r.week === w && r.corridor === cor)?.sea_otp_pct ?? null
       ),
       ...(cor === "YANTIAN_FEEDER_HKG"
-        ? {
-            markArea: {
-              itemStyle: { color: "rgba(244,63,94,0.12)" },
-              data: [[{ name: "Congestion", xAxis: "2026-03-02" }, { xAxis: "2026-03-16" }]],
-            },
-          }
+        ? { markArea: windowArea("Congestion", "2026-03-02", "2026-03-16") }
         : {}),
-    })),
-    tooltip: { trigger: "axis" },
-  };
-
-  const dailyOption: EChartsOption = {
-    legend: { ...DARK_LEGEND, data: ["Air OTP %", "Load Factor %"] },
-    grid: { left: 40, right: 40, top: 30, bottom: 45 },
-    dataZoom: [{ type: "inside" }, { type: "slider", height: 18, bottom: 8 }],
-    xAxis: {
-      type: "category",
-      data: trends.daily.map((d) => d.date),
-      ...DARK_AXIS,
-    },
-    yAxis: [
-      { type: "value", min: 0, max: 100, ...DARK_AXIS },
-      { type: "value", ...DARK_AXIS },
-    ],
-    series: [
-      {
-        name: "Air OTP %",
-        type: "line",
-        showSymbol: false,
-        lineStyle: { width: 1.5, color: "#22d3ee" },
-        itemStyle: { color: "#22d3ee" },
-        data: trends.daily.map((d) => d.air_otp_pct),
-        markArea: {
-          itemStyle: { color: "rgba(244,63,94,0.12)" },
-          data: [[{ name: "Typhoon", xAxis: "2025-09-15" }, { xAxis: "2025-09-21" }]],
-        },
-      },
-      {
-        name: "Load Factor %",
-        type: "line",
-        yAxisIndex: 1,
-        showSymbol: false,
-        lineStyle: { width: 1.5, color: "#34d399" },
-        itemStyle: { color: "#34d399" },
-        data: trends.daily.map((d) => d.load_factor_pct),
-      },
-    ],
+    })) as EChartsOption["series"],
     tooltip: { trigger: "axis" },
   };
 
@@ -165,15 +155,15 @@ export default function OverviewPage() {
       {
         name: "Revenue $M",
         type: "bar",
-        itemStyle: { color: "#38bdf8", borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: "#a1a1aa", borderRadius: [3, 3, 0, 0] },
         data: trends.monthly.map((m) => m.revenue_musd),
       },
       {
         name: "Gross Margin %",
         type: "line",
         yAxisIndex: 1,
-        lineStyle: { width: 2, color: "#fbbf24" },
-        itemStyle: { color: "#fbbf24" },
+        lineStyle: { width: 2, color: SERIES_COLORS[0] },
+        itemStyle: { color: SERIES_COLORS[0] },
         data: trends.monthly.map((m) => m.gross_margin_pct),
       },
     ],
@@ -187,11 +177,11 @@ export default function OverviewPage() {
         type: "pie",
         radius: ["45%", "72%"],
         center: ["50%", "55%"],
-        label: { color: "#8b9bb4", formatter: "{b}\n{c} legs" },
+        label: { color: "#71717a", formatter: "{b}\n{c} legs" },
         data: network.mode_split.map((m, i) => ({
           name: m.mode,
           value: m.legs,
-          itemStyle: { color: ["#22d3ee", "#818cf8", "#34d399"][i % 3] },
+          itemStyle: { color: SERIES_COLORS[i % SERIES_COLORS.length] },
         })),
       },
     ],
@@ -209,7 +199,7 @@ export default function OverviewPage() {
     series: [
       {
         type: "bar",
-        itemStyle: { color: "#22d3ee", borderRadius: [0, 3, 3, 0] },
+        itemStyle: { color: SERIES_COLORS[0], borderRadius: [0, 3, 3, 0] },
         data: network.air_lanes.map((l) => l.tonnes).reverse(),
       },
     ],
@@ -228,15 +218,15 @@ export default function OverviewPage() {
       {
         name: "Avg Delay (h)",
         type: "bar",
-        itemStyle: { color: "#818cf8", borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: "#a1a1aa", borderRadius: [3, 3, 0, 0] },
         data: network.feeder_ports.map((f) => f.avg_delay_hours),
       },
       {
         name: "Sea OTP %",
         type: "line",
         yAxisIndex: 1,
-        lineStyle: { width: 2, color: "#34d399" },
-        itemStyle: { color: "#34d399" },
+        lineStyle: { width: 2, color: SERIES_COLORS[1] },
+        itemStyle: { color: SERIES_COLORS[1] },
         data: network.feeder_ports.map((f) => f.sea_otp_pct),
       },
     ],
@@ -255,24 +245,26 @@ export default function OverviewPage() {
       {
         name: "Truck OTP %",
         type: "bar",
-        itemStyle: { color: "#34d399", borderRadius: [3, 3, 0, 0] },
+        itemStyle: { color: SERIES_COLORS[1], borderRadius: [3, 3, 0, 0] },
         data: network.truck_checkpoints.map((c) => c.truck_otp_pct),
       },
       {
         name: "Avg Crossing (min)",
         type: "line",
         yAxisIndex: 1,
-        lineStyle: { width: 2, color: "#f59e0b" },
-        itemStyle: { color: "#f59e0b" },
+        lineStyle: { width: 2, color: SERIES_COLORS[3] },
+        itemStyle: { color: SERIES_COLORS[3] },
         data: network.truck_checkpoints.map((c) => c.avg_crossing_minutes),
       },
     ],
     tooltip: { trigger: "axis" },
   };
 
+  const chainMax = Math.max(...network.chain_mix.map((x) => x.revenue_musd));
+
   return (
     <div className="space-y-5">
-      {/* KPI row — three modes at equal footing */}
+      {/* KPI rows — three modes at equal footing */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <KpiCard label="Air OTP (±15min)" value={k.air_otp_pct} unit="%" hint="flight leg level" />
         <KpiCard label="Sea OTP (±4h)" value={k.sea_otp_pct} unit="%" hint="feeder barge legs" />
@@ -280,8 +272,17 @@ export default function OverviewPage() {
         <KpiCard label="E2E Shipment OTP" value={k.multimodal_otp_pct} unit="%" hint="±60 min tolerance" />
         <KpiCard label="Cargo Load Factor" value={k.load_factor_pct} unit="%" hint="RTK / ATK, HKG network" />
         <KpiCard label="Hub Dwell (avg)" value={k.avg_dwell_hours} unit="h" hint="feeder arrival → wheels up" />
-        <KpiCard label="Revenue (18 mo)" value={`$${k.total_revenue_musd}M`} hint={`${k.total_shipments.toLocaleString()} shipments · ${Math.round(k.total_tonnes).toLocaleString()} t`} />
-        <KpiCard label="Gross Margin" value={k.gross_margin_pct} unit="%" tone={k.gross_margin_pct > 15 ? "good" : "warn"} />
+        <KpiCard
+          label="Revenue (18 mo)"
+          value={`$${k.total_revenue_musd}M`}
+          hint={`${k.total_shipments.toLocaleString()} shipments · ${Math.round(k.total_tonnes).toLocaleString()} t`}
+        />
+        <KpiCard
+          label="Gross Margin"
+          value={k.gross_margin_pct}
+          unit="%"
+          tone={k.gross_margin_pct > 15 ? "good" : "warn"}
+        />
       </div>
 
       {/* Disruption banner */}
@@ -289,12 +290,20 @@ export default function OverviewPage() {
         {overview.recent_disruptions.map((d) => (
           <div
             key={d.event_id}
-            className={`rounded-lg border px-3 py-1.5 text-xs ${CATEGORY_COLOR[d.event_category] ?? "bg-slate-800/60 border-slate-700 text-slate-300"}`}
+            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs ${
+              CATEGORY_STYLE[d.event_category] ??
+              "border-zinc-200 bg-zinc-50 text-zinc-600"
+            }`}
           >
+            {d.event_category === "WEATHER" ? (
+              <TriangleAlert className="h-3.5 w-3.5" />
+            ) : (
+              <CircleAlert className="h-3.5 w-3.5" />
+            )}
             <span className="font-semibold">{d.event_code}</span>
-            <span className="mx-2 opacity-50">·</span>
+            <span className="opacity-50">·</span>
             {d.primary_location}
-            <span className="mx-2 opacity-50">·</span>
+            <span className="opacity-50">·</span>
             {d.start_timestamp.slice(0, 10)} → {d.end_timestamp.slice(0, 10)}
           </div>
         ))}
@@ -302,44 +311,39 @@ export default function OverviewPage() {
 
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <ChartPanel title="Air — Daily OTP & Load Factor (typhoon window shaded)" option={dailyOption} height={320} />
-        <ChartPanel title="Road — Daily Truck OTP & Border Crossing Time (SZBP congestion shaded)" option={truckOption} height={320} />
-        <ChartPanel title="Sea — Weekly Feeder Departure OTP by Corridor (Yantian congestion shaded)" option={seaOption} height={320} />
+        <ChartPanel title="Air — Daily OTP & Load Factor" subtitle="typhoon window shaded" option={dailyOption} height={320} />
+        <ChartPanel title="Road — Daily Truck OTP & Border Crossing Time" subtitle="SZBP congestion shaded" option={truckOption} height={320} />
+        <ChartPanel title="Sea — Weekly Feeder Departure OTP" subtitle="by corridor, Yantian congestion shaded" option={seaOption} height={320} />
         <ChartPanel title="Monthly Revenue & Gross Margin" option={monthlyOption} height={320} />
         <ChartPanel title="Transport Mode Split (legs)" option={modeOption} height={280} />
         <ChartPanel title="Top Air Lanes by Carried Tonnes" option={laneOption} height={280} />
         <ChartPanel title="Feeder Port Health (sea legs into HKG)" option={feederOption} height={280} />
         <ChartPanel title="Cross-Border Checkpoints (truck, KPI daily)" option={checkpointOption} height={280} />
-        <div className="rounded-xl border border-slate-800 bg-[#0f1729] p-4">
-          <h3 className="mb-3 text-sm font-semibold tracking-wide text-slate-300">
+        <div className="rounded-lg border border-zinc-200 bg-white p-4">
+          <h3 className="mb-3 text-sm font-semibold text-zinc-900">
             Chain Mix — Revenue by Routing Pattern
           </h3>
           <div className="space-y-3">
-            {network.chain_mix.map((c, i) => {
-              const max = Math.max(...network.chain_mix.map((x) => x.revenue_musd));
-              const colors = ["bg-cyan-500", "bg-indigo-500", "bg-emerald-500"];
-              return (
-                <div key={c.chain}>
-                  <div className="mb-1 flex justify-between text-xs text-slate-400">
-                    <span>{c.chain}</span>
-                    <span>
-                      ${c.revenue_musd}M · {c.shipments.toLocaleString()} shipments
-                    </span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-slate-800">
-                    <div
-                      className={`h-2 rounded-full ${colors[i % 3]}`}
-                      style={{ width: `${(c.revenue_musd / max) * 100}%` }}
-                    />
-                  </div>
+            {network.chain_mix.map((c) => (
+              <div key={c.chain}>
+                <div className="mb-1 flex justify-between text-xs text-zinc-500">
+                  <span>{c.chain}</span>
+                  <span className="tabular-nums">
+                    ${c.revenue_musd}M · {c.shipments.toLocaleString()} shipments
+                  </span>
                 </div>
-              );
-            })}
+                <div className="h-2 w-full rounded-full bg-zinc-100">
+                  <div
+                    className="h-2 rounded-full bg-indigo-600"
+                    style={{ width: `${(c.revenue_musd / chainMax) * 100}%` }}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
-          <p className="mt-4 text-[11px] leading-relaxed text-slate-500">
-            Sea-Air-Truck is the largest routing pattern by revenue — cargo arrives
-            by feeder barge into HKG, transits the hub and flies out on
-            long-haul freighters.
+          <p className="mt-4 text-[11px] leading-relaxed text-zinc-500">
+            Sea-Air-Truck is the largest routing pattern by revenue — cargo arrives by feeder
+            barge into HKG, transits the hub and flies out on long-haul freighters.
           </p>
         </div>
       </div>

@@ -3,6 +3,17 @@
 import { useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import ReactECharts from "echarts-for-react";
+import {
+  ChevronDown,
+  CircleCheck,
+  Clock,
+  FileText,
+  LoaderCircle,
+  MessageSquareText,
+  RadioTower,
+  ReceiptText,
+  TriangleAlert,
+} from "lucide-react";
 import { DARK_AXIS, DARK_LEGEND } from "@/components/ChartPanel";
 
 export interface ToolPayload {
@@ -35,11 +46,12 @@ export interface ToolEvent {
   running: boolean;
 }
 
-const TOOL_LABEL: Record<string, string> = {
-  query_data: "Querying control tower database",
-  diagnose_anomaly: "Diagnosing anomalies",
-  simulate_disruption: "Running disruption simulation",
-  quote_booking: "Preparing freight quote",
+const TOOL_META: Record<string, { label: string; icon: typeof FileText }> = {
+  query_data: { label: "Querying control tower database", icon: FileText },
+  diagnose_anomaly: { label: "Diagnosing anomalies", icon: TriangleAlert },
+  simulate_disruption: { label: "Running disruption simulation", icon: RadioTower },
+  quote_booking: { label: "Preparing freight quote", icon: ReceiptText },
+  raise_alert: { label: "Raising exception ticket", icon: MessageSquareText },
 };
 
 function chartOption(ev: ToolEvent): EChartsOption | null {
@@ -88,34 +100,36 @@ function chartOption(ev: ToolEvent): EChartsOption | null {
 export default function ToolActivityCard({ ev }: { ev: ToolEvent }) {
   const [open, setOpen] = useState(false);
   const option = useMemo(() => chartOption(ev), [ev]);
+  const meta = TOOL_META[ev.name] ?? { label: ev.name, icon: FileText };
 
   return (
-    <div className="my-2 w-full overflow-hidden rounded-lg border border-slate-800 bg-[#0d1526]">
+    <div className="my-2 w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-800/40"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-zinc-600 hover:bg-zinc-100"
       >
-        <span
-          className={`inline-block h-1.5 w-1.5 rounded-full ${
-            ev.running ? "animate-pulse bg-amber-400" : "bg-emerald-400"
-          }`}
-        />
-        <span className="font-medium text-slate-300">
-          {TOOL_LABEL[ev.name] ?? ev.name}
-        </span>
-        {!ev.running && ev.summary && (
-          <span className="text-slate-500">— {ev.summary}</span>
+        {ev.running ? (
+          <LoaderCircle className="h-3.5 w-3.5 animate-spin text-zinc-400" />
+        ) : (
+          <CircleCheck className="h-3.5 w-3.5 text-emerald-600" />
         )}
-        <span className="ml-auto text-slate-600">{open ? "▲" : "▼"}</span>
+        <meta.icon className="h-3.5 w-3.5 text-zinc-400" />
+        <span className="font-medium text-zinc-800">{meta.label}</span>
+        {!ev.running && ev.summary && (
+          <span className="text-zinc-500">— {ev.summary}</span>
+        )}
+        <ChevronDown
+          className={`ml-auto h-3.5 w-3.5 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}
+        />
       </button>
 
       {open && (
-        <div className="min-w-0 overflow-hidden border-t border-slate-800/80 px-3 py-2 text-xs">
+        <div className="min-w-0 overflow-hidden border-t border-zinc-200 px-3 py-2 text-xs">
           {ev.payload?.error && (
-            <div className="text-rose-400">Error: {ev.payload.error}</div>
+            <div className="mb-1.5 text-rose-600">Error: {ev.payload.error}</div>
           )}
           {ev.payload?.sql && (
-            <pre className="mb-2 overflow-x-auto rounded bg-black/40 p-2 text-[11px] leading-relaxed text-cyan-200/80">
+            <pre className="mb-2 overflow-x-auto rounded-md bg-zinc-900 p-2 text-[11px] leading-relaxed text-zinc-100">
               {ev.payload.sql}
             </pre>
           )}
@@ -138,9 +152,9 @@ function DataTable({ ev }: { ev: ToolEvent }) {
   const { columns, rows } = ev.payload!;
   if (!columns || !rows) return null;
   return (
-    <div className="max-h-56 overflow-auto rounded border border-slate-800/60">
+    <div className="max-h-56 overflow-auto rounded-md border border-zinc-200 bg-white">
       <table className="w-full text-left text-[11px]">
-        <thead className="sticky top-0 bg-[#101a30] text-slate-400">
+        <thead className="sticky top-0 bg-zinc-100 text-zinc-500">
           <tr>
             {columns.map((c) => (
               <th key={c} className="px-2 py-1.5 font-medium">
@@ -149,9 +163,9 @@ function DataTable({ ev }: { ev: ToolEvent }) {
             ))}
           </tr>
         </thead>
-        <tbody className="text-slate-300">
+        <tbody className="text-zinc-700">
           {rows.map((r, i) => (
-            <tr key={i} className="border-t border-slate-800/50">
+            <tr key={i} className="border-t border-zinc-100">
               {r.map((v, j) => (
                 <td key={j} className="whitespace-nowrap px-2 py-1">
                   {v ?? "—"}
@@ -168,8 +182,8 @@ function DataTable({ ev }: { ev: ToolEvent }) {
 function RecoveryChart({ ev }: { ev: ToolEvent }) {
   const curve = ev.payload!.recovery_curve!;
   return (
-    <div className="rounded border border-slate-800/60 p-1">
-      <div className="px-2 pt-1 text-[11px] text-slate-500">
+    <div className="rounded-md border border-zinc-200 bg-white p-1">
+      <div className="px-2 pt-1 text-[11px] text-zinc-500">
         Backlog recovery curve (130% surge capacity after reopening)
       </div>
       <ReactECharts
@@ -182,7 +196,7 @@ function RecoveryChart({ ev }: { ev: ToolEvent }) {
           series: [
             {
               type: "bar",
-              itemStyle: { color: "#f59e0b", borderRadius: [3, 3, 0, 0] },
+              itemStyle: { color: "#0e9384", borderRadius: [3, 3, 0, 0] },
               data: curve.map((c) => c.backlog_tonnes),
             },
           ],
@@ -196,10 +210,15 @@ function RecoveryChart({ ev }: { ev: ToolEvent }) {
 function FindingsList({ ev }: { ev: ToolEvent }) {
   const { findings, overlapping_events, anchor } = ev.payload!;
   return (
-    <div className="space-y-1.5">
-      <div className="text-[11px] text-slate-500">As of {anchor}</div>
+    <div className="space-y-1.5 bg-white">
+      <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+        <Clock className="h-3 w-3" /> as of {anchor}
+      </div>
       {(findings ?? []).map((f, i) => (
-        <div key={i} className="rounded border border-amber-900/50 bg-amber-950/20 px-2.5 py-1.5 text-[11px] text-amber-200">
+        <div
+          key={i}
+          className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800"
+        >
           <span className="font-semibold">{String(f.metric)}</span>
           {" · "}
           {String(f.route_lane ?? f.port ?? f.dest)}
@@ -210,13 +229,18 @@ function FindingsList({ ev }: { ev: ToolEvent }) {
         </div>
       ))}
       {(overlapping_events ?? []).map((e, i) => (
-        <div key={`e${i}`} className="rounded border border-rose-900/50 bg-rose-950/20 px-2.5 py-1.5 text-[11px] text-rose-200">
+        <div
+          key={`e${i}`}
+          className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-700"
+        >
           {String(e.event_code)} · {String(e.primary_location)} ·{" "}
           {String(e.start_timestamp).slice(0, 10)} → {String(e.end_timestamp).slice(0, 10)}
         </div>
       ))}
       {(!findings || findings.length === 0) && (
-        <div className="text-[11px] text-emerald-400">No deviations beyond threshold.</div>
+        <div className="flex items-center gap-1.5 text-[11px] text-emerald-700">
+          <CircleCheck className="h-3 w-3" /> No deviations beyond threshold.
+        </div>
       )}
     </div>
   );
@@ -225,11 +249,14 @@ function FindingsList({ ev }: { ev: ToolEvent }) {
 function QuoteBreakdown({ ev }: { ev: ToolEvent }) {
   const { legs, total_usd, estimated_transit_days } = ev.payload!;
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5 bg-white">
       {(legs ?? []).map((l, i) => (
-        <div key={i} className="flex items-center justify-between rounded border border-slate-800/60 bg-black/20 px-2.5 py-1.5 text-[11px] text-slate-300">
+        <div
+          key={i}
+          className="flex items-center justify-between rounded-md border border-zinc-200 px-2.5 py-1.5 text-[11px] text-zinc-700"
+        >
           <span>
-            <span className="font-semibold uppercase text-cyan-300">{String(l.mode)}</span>{" "}
+            <span className="font-semibold uppercase text-zinc-900">{String(l.mode)}</span>{" "}
             {String(l.origin)} → {String(l.dest)}
           </span>
           <span>
@@ -237,9 +264,9 @@ function QuoteBreakdown({ ev }: { ev: ToolEvent }) {
           </span>
         </div>
       ))}
-      <div className="flex justify-between px-2.5 pt-1 text-xs font-semibold text-slate-200">
+      <div className="flex justify-between px-2.5 pt-1 text-xs font-semibold text-zinc-900">
         <span>Total · est. {String(estimated_transit_days)} days</span>
-        <span className="text-cyan-300">${String(total_usd)}</span>
+        <span className="tabular-nums">${String(total_usd)}</span>
       </div>
     </div>
   );

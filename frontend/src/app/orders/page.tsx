@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { FileText, ReceiptText } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 
 interface OrderRow {
@@ -18,12 +19,12 @@ interface OrderRow {
 }
 
 const LC_STYLE: Record<string, string> = {
-  DRAFT: "bg-slate-800/60 text-slate-400 border-slate-700",
-  QUOTED: "bg-cyan-950/60 text-cyan-400 border-cyan-800",
+  DRAFT: "bg-zinc-100 text-zinc-500 border-zinc-300",
+  QUOTED: "bg-zinc-100 text-indigo-600 border-zinc-300",
   BOOKED: "bg-indigo-950/60 text-indigo-400 border-indigo-800",
-  IN_PROGRESS: "bg-amber-950/60 text-amber-400 border-amber-800",
-  COMPLETED: "bg-emerald-950/60 text-emerald-400 border-emerald-800",
-  CANCELLED: "bg-rose-950/60 text-rose-400 border-rose-800",
+  IN_PROGRESS: "bg-amber-50 text-amber-700 border-amber-200",
+  COMPLETED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  CANCELLED: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
 const NEXT: Record<string, string[]> = {
@@ -169,13 +170,13 @@ export default function OrdersPage() {
   return (
     <div className="space-y-4">
       {/* create form */}
-      <div className="rounded-xl border border-slate-800 bg-[#0f1729] p-4">
-        <h3 className="mb-3 text-sm font-semibold text-slate-300">New Order</h3>
+      <div className="rounded-xl border border-zinc-200 bg-white p-4">
+        <h3 className="mb-3 text-sm font-semibold text-zinc-700">New Order</h3>
         <div className="grid grid-cols-2 gap-2 text-xs md:grid-cols-4">
           <select
             value={form.customer_id}
             onChange={(e) => setForm({ ...form, customer_id: e.target.value })}
-            className="rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1.5 text-slate-200"
+            className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-zinc-900"
           >
             {(customers.length ? customers : [{ customer_id: "", customer_name: "loading…" }]).map((c) => (
               <option key={c.customer_id} value={c.customer_id}>
@@ -186,19 +187,19 @@ export default function OrdersPage() {
           <input
             value={form.origin_location}
             onChange={(e) => setForm({ ...form, origin_location: e.target.value })}
-            className="rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1.5 text-slate-200"
+            className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-zinc-900"
             placeholder="Origin (CNYTN)"
           />
           <input
             value={form.destination_location}
             onChange={(e) => setForm({ ...form, destination_location: e.target.value })}
-            className="rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1.5 text-slate-200"
+            className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-zinc-900"
             placeholder="Destination (LAX)"
           />
           <select
             value={form.transport_chain_type}
             onChange={(e) => setForm({ ...form, transport_chain_type: e.target.value })}
-            className="rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1.5 text-slate-200"
+            className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-zinc-900"
           >
             <option>SEA_AIR_TRUCK</option>
             <option>TRUCK_AIR_TRUCK</option>
@@ -207,7 +208,7 @@ export default function OrdersPage() {
           <select
             value={form.cargo_category}
             onChange={(e) => setForm({ ...form, cargo_category: e.target.value })}
-            className="rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1.5 text-slate-200"
+            className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-zinc-900"
           >
             <option>General</option>
             <option>High_Tech</option>
@@ -219,47 +220,47 @@ export default function OrdersPage() {
             type="number"
             value={form.total_chargeable_weight_kg}
             onChange={(e) => setForm({ ...form, total_chargeable_weight_kg: Number(e.target.value) })}
-            className="rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1.5 text-slate-200"
+            className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-zinc-900"
           />
           <input
             type="number"
             value={form.contracted_revenue_usd}
             onChange={(e) => setForm({ ...form, contracted_revenue_usd: Number(e.target.value) })}
-            className="rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1.5 text-slate-200"
+            className="rounded border border-zinc-300 bg-white px-2 py-1.5 text-zinc-900"
           />
           <button
             onClick={createOrder}
             disabled={busy === "create" || !form.customer_id}
-            className="rounded bg-cyan-700 px-3 py-1.5 font-medium text-white hover:bg-cyan-600 disabled:opacity-40"
+            className="rounded bg-zinc-900 px-3 py-1.5 font-medium text-white hover:bg-zinc-700 disabled:opacity-40"
           >
             {busy === "create" ? "Creating…" : "Create DRAFT"}
           </button>
         </div>
       </div>
 
-      {msg && <div className="rounded-lg border border-emerald-800 bg-emerald-950/30 p-2.5 text-xs text-emerald-300">{msg}</div>}
-      {error && <div className="rounded-lg border border-rose-900 bg-rose-950/40 p-2.5 text-xs text-rose-300">{error}</div>}
+      {msg && <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2.5 text-xs text-emerald-700">{msg}</div>}
+      {error && <div className="rounded-lg border border-rose-200 bg-rose-50 p-2.5 text-xs text-rose-700">{error}</div>}
 
       {/* order list */}
       <div className="space-y-2">
-        {orders === null && <div className="text-xs text-slate-500">Loading orders…</div>}
+        {orders === null && <div className="text-xs text-zinc-500">Loading orders…</div>}
         {orders?.length === 0 && (
-          <div className="text-xs text-slate-500">No workbench orders yet — create one above.</div>
+          <div className="text-xs text-zinc-500">No workbench orders yet — create one above.</div>
         )}
         {orders?.map((o) => (
-          <div key={o.shipment_id} className="rounded-xl border border-slate-800 bg-[#0f1729] p-3">
+          <div key={o.shipment_id} className="rounded-xl border border-zinc-200 bg-white p-3">
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <span className="font-mono font-bold text-slate-200">{o.shipment_id}</span>
+              <span className="font-mono font-bold text-zinc-900">{o.shipment_id}</span>
               <span className={`rounded border px-1.5 py-0.5 text-[9px] ${LC_STYLE[o.lifecycle] ?? ""}`}>
                 {o.lifecycle}
               </span>
               {o.awb_no && (
-                <span className="rounded border border-indigo-800 bg-indigo-950/40 px-1.5 py-0.5 font-mono text-[9px] text-indigo-300">
+                <span className="rounded border border-indigo-800 bg-indigo-950/40 px-1.5 py-0.5 font-mono text-[9px] text-indigo-700">
                   AWB {o.awb_no}
                 </span>
               )}
-              <span className="text-slate-500">{o.customer_name}</span>
-              <span className="text-slate-400">
+              <span className="text-zinc-500">{o.customer_name}</span>
+              <span className="text-zinc-500">
                 {o.origin_location} → {o.destination_location} · {o.cargo_category} ·{" "}
                 {Math.round(o.total_chargeable_weight_kg).toLocaleString()} kg · $
                 {Math.round(o.contracted_revenue_usd).toLocaleString()}
@@ -269,7 +270,7 @@ export default function OrdersPage() {
                   <button
                     onClick={() => allocateAwb(o.shipment_id)}
                     disabled={busy === o.shipment_id}
-                    className="rounded-md border border-indigo-700 px-2 py-1 text-[10px] text-indigo-300 hover:bg-indigo-950/40 disabled:opacity-40"
+                    className="rounded-md border border-indigo-700 px-2 py-1 text-[10px] text-indigo-700 hover:bg-indigo-950/40 disabled:opacity-40"
                   >
                     Allocate AWB
                   </button>
@@ -279,7 +280,7 @@ export default function OrdersPage() {
                     key={to}
                     onClick={() => transition(o.shipment_id, to)}
                     disabled={busy === o.shipment_id}
-                    className="rounded-md border border-slate-700 px-2 py-1 text-[10px] text-slate-300 hover:border-cyan-700 hover:text-cyan-300 disabled:opacity-40"
+                    className="rounded-md border border-zinc-300 px-2 py-1 text-[10px] text-zinc-700 hover:border-zinc-400 hover:text-indigo-600 disabled:opacity-40"
                   >
                     → {to}
                   </button>
@@ -287,40 +288,40 @@ export default function OrdersPage() {
                 <button
                   onClick={() => generateDoc(o.shipment_id, "PACKING_LIST")}
                   disabled={busy === `${o.shipment_id}-PACKING_LIST`}
-                  className="rounded-md border border-slate-700 px-2 py-1 text-[10px] text-slate-400 hover:border-cyan-700 hover:text-cyan-300 disabled:opacity-40"
+                  className="rounded-md border border-zinc-300 px-2 py-1 text-[10px] text-zinc-500 hover:border-zinc-400 hover:text-indigo-600 disabled:opacity-40"
                 >
-                  📄 Packing list
+                  <FileText className="inline h-3 w-3" /> Packing list
                 </button>
                 {o.awb_no && (
                   <button
                     onClick={() => generateDoc(o.shipment_id, "AWB")}
                     disabled={busy === `${o.shipment_id}-AWB`}
-                    className="rounded-md border border-indigo-700 px-2 py-1 text-[10px] text-indigo-300 hover:bg-indigo-950/40 disabled:opacity-40"
+                    className="rounded-md border border-indigo-700 px-2 py-1 text-[10px] text-indigo-700 hover:bg-indigo-950/40 disabled:opacity-40"
                   >
-                    📄 AWB doc
+                    <FileText className="inline h-3 w-3" /> AWB doc
                   </button>
                 )}
                 {o.cargo_category === "Dangerous_Goods" && (
                   <button
                     onClick={() => generateDoc(o.shipment_id, "DG_DECL")}
                     disabled={busy === `${o.shipment_id}-DG_DECL`}
-                    className="rounded-md border border-rose-800 px-2 py-1 text-[10px] text-rose-300 hover:bg-rose-950/40 disabled:opacity-40"
+                    className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-700 hover:bg-rose-50 disabled:opacity-40"
                   >
-                    📄 DG decl.
+                    <FileText className="inline h-3 w-3" /> DG decl.
                   </button>
                 )}
                 <button
                   onClick={() => settle(o.shipment_id)}
                   disabled={busy === `${o.shipment_id}-settle`}
-                  className="rounded-md border border-emerald-800 px-2 py-1 text-[10px] text-emerald-300 hover:bg-emerald-950/40 disabled:opacity-40"
+                  className="rounded-md border border-emerald-200 px-2 py-1 text-[10px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-40"
                 >
-                  💰 Settle & invoice
+                  <ReceiptText className="inline h-3 w-3" /> Settle & invoice
                 </button>
                 {o.lifecycle !== "COMPLETED" && o.lifecycle !== "CANCELLED" && (
                   <button
                     onClick={() => transition(o.shipment_id, "CANCELLED")}
                     disabled={busy === o.shipment_id}
-                    className="rounded-md border border-rose-900 px-2 py-1 text-[10px] text-rose-400 hover:bg-rose-950/40 disabled:opacity-40"
+                    className="rounded-md border border-rose-200 px-2 py-1 text-[10px] text-rose-700 hover:bg-rose-50 disabled:opacity-40"
                   >
                     Cancel
                   </button>

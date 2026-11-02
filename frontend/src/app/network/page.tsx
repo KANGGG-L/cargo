@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Bell, Plane, Ship, Truck, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import { api } from "@/lib/api";
@@ -16,29 +17,29 @@ import ChartPanel, { DARK_AXIS } from "@/components/ChartPanel";
 
 const ShipmentMap = dynamic(() => import("@/components/ShipmentMap"), {
   ssr: false,
-  loading: () => <div className="p-6 text-xs text-slate-500">Loading map…</div>,
+  loading: () => <div className="p-6 text-xs text-zinc-500">Loading map…</div>,
 });
 
-const MODE_STYLE: Record<string, { icon: string; color: string; label: string }> = {
-  SEA: { icon: "🚢", color: "border-indigo-500/60 bg-indigo-950/30", label: "text-indigo-300" },
-  AIR: { icon: "✈️", color: "border-cyan-500/60 bg-cyan-950/30", label: "text-cyan-300" },
-  TRUCK: { icon: "🚛", color: "border-emerald-500/60 bg-emerald-950/30", label: "text-emerald-300" },
+const MODE_STYLE: Record<string, { icon: LucideIcon; color: string; label: string }> = {
+  SEA: { icon: Ship, color: "border-indigo-200 bg-indigo-50", label: "text-indigo-700" },
+  AIR: { icon: Plane, color: "border-sky-200 bg-sky-50", label: "text-sky-700" },
+  TRUCK: { icon: Truck, color: "border-emerald-200 bg-emerald-50", label: "text-emerald-700" },
 };
 
 const STATUS_STYLE: Record<string, string> = {
-  DELIVERED: "bg-emerald-950/60 text-emerald-400 border-emerald-800",
-  DELAYED: "bg-amber-950/60 text-amber-400 border-amber-800",
-  EXCEPTION: "bg-rose-950/60 text-rose-400 border-rose-800",
+  DELIVERED: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  DELAYED: "bg-amber-50 text-amber-700 border-amber-200",
+  EXCEPTION: "bg-rose-50 text-rose-700 border-rose-200",
 };
 
 const CHAINS = ["ALL", "SEA_AIR_TRUCK", "TRUCK_AIR_TRUCK", "DIRECT_AIR"];
 const STATUSES = ["", "DELIVERED", "DELAYED", "EXCEPTION"];
 
 function fmtDelay(min: number): { text: string; cls: string } {
-  if (min == null) return { text: "—", cls: "text-slate-500" };
-  if (min <= 15) return { text: "on time", cls: "text-emerald-400" };
+  if (min == null) return { text: "—", cls: "text-zinc-500" };
+  if (min <= 15) return { text: "on time", cls: "text-emerald-700" };
   const h = Math.round(min / 60 * 10) / 10;
-  return { text: `+${h} h`, cls: h > 20 ? "text-rose-400" : "text-amber-400" };
+  return { text: `+${h} h`, cls: h > 20 ? "text-rose-700" : "text-amber-700" };
 }
 
 function fmtTs(ts: string): string {
@@ -131,8 +132,8 @@ export default function NetworkPage() {
     <div className="space-y-5">
       <div className="grid gap-4 lg:grid-cols-[380px_1fr]">
         {/* Shipment list */}
-        <div className="rounded-xl border border-slate-800 bg-[#0f1729]">
-          <div className="border-b border-slate-800 p-3">
+        <div className="rounded-xl border border-zinc-200 bg-white">
+          <div className="border-b border-zinc-200 p-3">
             <div className="flex flex-wrap gap-1">
               {CHAINS.map((c) => (
                 <button
@@ -140,8 +141,8 @@ export default function NetworkPage() {
                   onClick={() => setChain(c)}
                   className={`rounded-md border px-2 py-1 text-[10px] font-medium transition-colors ${
                     chain === c
-                      ? "border-cyan-700 bg-cyan-950/60 text-cyan-300"
-                      : "border-slate-800 text-slate-500 hover:text-slate-300"
+                      ? "border-zinc-300 bg-zinc-100 text-indigo-600"
+                      : "border-zinc-200 text-zinc-500 hover:text-zinc-700"
                   }`}
                 >
                   {c === "ALL" ? "ALL CHAINS" : c.replace(/_/g, " ")}
@@ -155,8 +156,8 @@ export default function NetworkPage() {
                   onClick={() => setStatus(s)}
                   className={`rounded-md border px-2 py-1 text-[10px] font-medium transition-colors ${
                     status === s
-                      ? "border-slate-600 bg-slate-800 text-slate-200"
-                      : "border-slate-800 text-slate-500 hover:text-slate-300"
+                      ? "border-zinc-400 bg-zinc-100 text-zinc-900"
+                      : "border-zinc-200 text-zinc-500 hover:text-zinc-700"
                   }`}
                 >
                   {s || "ANY STATUS"}
@@ -166,28 +167,28 @@ export default function NetworkPage() {
           </div>
           <div className="max-h-[420px] overflow-y-auto">
             {shipments === null && (
-              <div className="p-4 text-xs text-slate-500">Loading shipments…</div>
+              <div className="p-4 text-xs text-zinc-500">Loading shipments…</div>
             )}
             {shipments?.length === 0 && (
-              <div className="p-4 text-xs text-slate-500">No shipments match.</div>
+              <div className="p-4 text-xs text-zinc-500">No shipments match.</div>
             )}
             {shipments?.map((s) => (
               <button
                 key={s.shipment_id}
                 onClick={() => setSelectedId(s.shipment_id)}
-                className={`block w-full border-b border-slate-800/60 px-3 py-2.5 text-left transition-colors hover:bg-slate-800/40 ${
-                  selectedId === s.shipment_id ? "bg-cyan-950/30" : ""
+                className={`block w-full border-b border-zinc-200 px-3 py-2.5 text-left transition-colors hover:bg-zinc-100 ${
+                  selectedId === s.shipment_id ? "bg-zinc-100" : ""
                 }`}
               >
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-mono font-semibold text-slate-200">{s.shipment_id}</span>
+                  <span className="font-mono font-semibold text-zinc-900">{s.shipment_id}</span>
                   <span className={`rounded border px-1.5 py-0.5 text-[9px] ${STATUS_STYLE[s.status] ?? ""}`}>
                     {s.status}
                   </span>
                 </div>
-                <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-500">
                   <span className="truncate pr-2">{s.customer_name}</span>
-                  <span className="shrink-0 text-slate-400">
+                  <span className="shrink-0 text-zinc-500">
                     {s.origin_location} → {s.destination_location}
                   </span>
                 </div>
@@ -197,45 +198,45 @@ export default function NetworkPage() {
         </div>
 
         {/* Trace */}
-        <div className="rounded-xl border border-slate-800 bg-[#0f1729] p-4">
-          {!trace && <div className="text-xs text-slate-500">Select a shipment…</div>}
+        <div className="rounded-xl border border-zinc-200 bg-white p-4">
+          {!trace && <div className="text-xs text-zinc-500">Select a shipment…</div>}
           {trace && (
             <>
               <div className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
                 <h3 className="font-mono text-sm font-bold text-white">{trace.shipment.shipment_id}</h3>
-                <span className="text-xs text-slate-400">{trace.shipment.customer_name} · {trace.shipment.region}</span>
+                <span className="text-xs text-zinc-500">{trace.shipment.customer_name} · {trace.shipment.region}</span>
                 <span className={`rounded border px-1.5 py-0.5 text-[10px] ${STATUS_STYLE[trace.shipment.status] ?? ""}`}>
                   {trace.shipment.status}
                 </span>
-                <span className="ml-auto text-[11px] text-slate-500">
+                <span className="ml-auto text-[11px] text-zinc-500">
                   {trace.shipment.transport_chain_type} · {trace.shipment.cargo_category} ·{" "}
                   {Math.round(trace.shipment.total_chargeable_weight_kg).toLocaleString()} kg ·{" "}
                   ${Math.round(trace.shipment.contracted_revenue_usd).toLocaleString()}
                 </span>
                 <button
                   onClick={() => setSubOpen((o) => !o)}
-                  className="rounded-md border border-slate-700 px-2 py-1 text-[10px] text-slate-300 hover:border-cyan-700 hover:text-cyan-300"
+                  className="rounded-md border border-zinc-300 px-2 py-1 text-[10px] text-zinc-700 hover:border-zinc-400 hover:text-indigo-600"
                 >
-                  🔔 Subscribe
+                  <Bell className="inline h-3 w-3" /> Subscribe
                 </button>
               </div>
               {subOpen && (
-                <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-800 bg-black/20 p-2">
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-zinc-200 bg-black/20 p-2">
                   <input
                     value={subEmail}
                     onChange={(e) => setSubEmail(e.target.value)}
                     placeholder="ops@customer.com"
-                    className="flex-1 rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1 text-xs text-slate-200 focus:border-cyan-700 focus:outline-none"
+                    className="flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-900 focus:border-zinc-400 focus:outline-none"
                   />
                   <button
                     onClick={subscribe}
-                    className="rounded bg-cyan-700 px-3 py-1 text-xs text-white hover:bg-cyan-600"
+                    className="rounded bg-zinc-900 px-3 py-1 text-xs text-white hover:bg-zinc-700"
                   >
                     Confirm
                   </button>
                 </div>
               )}
-              {subMsg && <div className="mb-2 text-[11px] text-emerald-400">{subMsg}</div>}
+              {subMsg && <div className="mb-2 text-[11px] text-emerald-700">{subMsg}</div>}
 
               {/* shipment-level dual-track milestones */}
               {milestones && (
@@ -272,13 +273,13 @@ export default function NetworkPage() {
       )}
 
       {tracks && tracks.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-slate-800">
-          <div className="border-b border-slate-800 bg-[#0f1729] px-4 py-2.5 text-sm font-semibold text-slate-300">
+        <div className="overflow-hidden rounded-xl border border-zinc-200">
+          <div className="border-b border-zinc-200 bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700">
             Route Map — simulated great-circle tracks (swap in AIS/ADS-B feeds for live positions)
             <span className="ml-3 inline-flex gap-3 text-[10px] font-normal">
-              <span className="text-cyan-300">● AIR</span>
-              <span className="text-indigo-300">● SEA</span>
-              <span className="text-emerald-300">● TRUCK</span>
+              <span className="text-indigo-600">● AIR</span>
+              <span className="text-indigo-700">● SEA</span>
+              <span className="text-emerald-700">● TRUCK</span>
             </span>
           </div>
           <div className="h-[380px]">
@@ -295,9 +296,9 @@ function fmtShort(ts: string): string {
 }
 
 const DEV_STYLE: Record<string, string> = {
-  ON_TIME: "border-emerald-800 bg-emerald-950/40 text-emerald-300",
-  LATE: "border-amber-800 bg-amber-950/40 text-amber-300",
-  MISSING: "border-rose-800 bg-rose-950/40 text-rose-300",
+  ON_TIME: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  LATE: "border-amber-200 bg-amber-50 text-amber-700",
+  MISSING: "border-rose-200 bg-rose-50 text-rose-700",
 };
 
 function MilestoneChip({ m }: { m: MilestoneRow }) {
@@ -330,10 +331,10 @@ function LegRow({
     <div className="flex gap-3">
       {/* rail */}
       <div className="flex flex-col items-center">
-        <div className={`flex h-9 w-9 items-center justify-center rounded-lg border text-lg ${style.color}`}>
-          {style.icon}
+        <div className={`flex h-9 w-9 items-center justify-center rounded-lg border ${style.color}`}>
+          <style.icon className="h-4 w-4" strokeWidth={2} />
         </div>
-        {!last && <div className="w-px flex-1 bg-slate-700" />}
+        {!last && <div className="w-px flex-1 bg-zinc-300" />}
       </div>
       {/* content */}
       <div className="min-w-0 flex-1 pb-5">
@@ -341,20 +342,20 @@ function LegRow({
           <span className={`text-xs font-bold uppercase tracking-wide ${style.label}`}>
             {leg.transport_mode} · LEG {leg.leg_sequence}
           </span>
-          <span className="text-sm font-semibold text-slate-200">
+          <span className="text-sm font-semibold text-zinc-900">
             {leg.origin_facility} → {leg.destination_facility}
           </span>
-          <span className="font-mono text-[11px] text-slate-500">
+          <span className="font-mono text-[11px] text-zinc-500">
             {leg.carrier_code} {leg.voyage_flight_no}
           </span>
           <span className={`ml-auto text-xs font-semibold ${delay.cls}`}>{delay.text}</span>
         </div>
-        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-500">
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-zinc-500">
           <span>dep {fmtTs(leg.actual_depart_ts || leg.planned_depart_ts)}</span>
           <span>arr {fmtTs(leg.actual_arrive_ts || leg.planned_arrive_ts)}</span>
           <span>{Math.round(leg.distance_km).toLocaleString()} km</span>
           <span>${leg.allocated_cost_usd.toLocaleString()}</span>
-          <span className={leg.leg_status === "COMPLETED" ? "text-emerald-500" : "text-amber-500"}>
+          <span className={leg.leg_status === "COMPLETED" ? "text-emerald-600" : "text-amber-500"}>
             {leg.leg_status}
           </span>
         </div>

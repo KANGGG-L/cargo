@@ -374,3 +374,92 @@ class Location(Base):
     kind: Mapped[str] = mapped_column(String(12))  # seaport | airport | checkpoint
     lat: Mapped[float] = mapped_column(Float)
     lon: Mapped[float] = mapped_column(Float)
+
+
+# ---------------------------------------------------------------- orders (F5)
+
+
+class OrderLifecycle(Base):
+    """Event-sourced order lifecycle (DRAFT→QUOTED→BOOKED→IN_PROGRESS→COMPLETED/CANCELLED)."""
+
+    __tablename__ = "fact_order_lifecycle"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    shipment_id: Mapped[str] = mapped_column(String(30), index=True)
+    status: Mapped[str] = mapped_column(String(14))
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    ts: Mapped[str] = mapped_column(String(30))
+
+    __table_args__ = {"sqlite_autoincrement": True}
+
+
+class AirWaybill(Base):
+    __tablename__ = "dim_awb"
+
+    awb_no: Mapped[str] = mapped_column(String(16), primary_key=True)  # 160-12345675
+    shipment_id: Mapped[str] = mapped_column(String(30), unique=True, index=True)
+    airline_code: Mapped[str] = mapped_column(String(4))
+    created_ts: Mapped[str] = mapped_column(String(30))
+
+
+# ---------------------------------------------------------------- documents (F7)
+
+
+class Document(Base):
+    __tablename__ = "dim_documents"
+
+    doc_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    shipment_id: Mapped[str] = mapped_column(String(30), index=True)
+    doc_type: Mapped[str] = mapped_column(String(16))  # AWB | DG_DECL | PACKING_LIST | CUSTOMS | INVOICE
+    file_path: Mapped[str] = mapped_column(String(200))
+    eawb_status: Mapped[str] = mapped_column(String(10))  # none | sent | accepted
+    created_ts: Mapped[str] = mapped_column(String(30))
+
+    # never reuse doc ids on delete
+    __table_args__ = {"sqlite_autoincrement": True}
+
+
+# ---------------------------------------------------------------- settlement (F8)
+
+
+class ChargeLine(Base):
+    __tablename__ = "fact_charge_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    shipment_id: Mapped[str] = mapped_column(String(30), index=True)
+    charge_type: Mapped[str] = mapped_column(String(16))  # freight | fuel | thc | demurrage | uld
+    amount_usd: Mapped[float] = mapped_column(Float)
+    basis: Mapped[str] = mapped_column(String(120))
+    created_ts: Mapped[str] = mapped_column(String(30))
+
+    __table_args__ = {"sqlite_autoincrement": True}
+
+
+class Invoice(Base):
+    __tablename__ = "fact_invoices"
+
+    invoice_id: Mapped[str] = mapped_column(String(16), primary_key=True)  # IN-000001
+    customer_id: Mapped[str] = mapped_column(String(20), index=True)
+    shipment_id: Mapped[str] = mapped_column(String(30), index=True)
+    amount_usd: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(10))  # open | paid | disputed
+    created_ts: Mapped[str] = mapped_column(String(30))
+    paid_ts: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    __table_args__ = {"sqlite_autoincrement": True}
+
+
+# ---------------------------------------------------------------- portal (F6)
+
+
+class User(Base):
+    __tablename__ = "dim_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(120), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(80))
+    role: Mapped[str] = mapped_column(String(10))  # ops | manager | customer
+    customer_id: Mapped[str | None] = mapped_column(String(20), nullable=True)  # scope for customer role
+    created_ts: Mapped[str] = mapped_column(String(30))
+
+    __table_args__ = {"sqlite_autoincrement": True}

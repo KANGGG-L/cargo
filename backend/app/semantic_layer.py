@@ -570,6 +570,30 @@ FEW_SHOT_QUERY_CATALOG: List[Dict[str, str]] = [
 ]
 
 
+def rank_few_shots(question: str, k: int = 3) -> list[Dict[str, str]]:
+    """Rank few-shot examples against a question by df-weighted keyword overlap.
+
+    Rare words (overall, network, typhoon, ...) dominate the score while common
+    words (what, air, otp) barely count — plain overlap would match the wrong
+    example whenever two questions share generic vocabulary.
+    """
+    import re
+
+    catalog = FEW_SHOT_QUERY_CATALOG
+    q_words = set(re.findall(r"[a-z]{3,}", question.lower()))
+    tokenized = [set(re.findall(r"[a-z]{3,}", item["question"].lower())) for item in catalog]
+    df: Dict[str, int] = {}
+    for words in tokenized:
+        for w in words:
+            df[w] = df.get(w, 0) + 1
+
+    def score(item_words: set) -> float:
+        return sum(1.0 / df.get(w, 1) for w in q_words & item_words)
+
+    ranked = sorted(zip(catalog, tokenized), key=lambda pair: score(pair[1]), reverse=True)
+    return [item for item, _ in ranked[:k]]
+
+
 def get_schema_context_prompt() -> str:
     """Generate markdown schema context describing tables, relationships and metrics for LLM system prompts."""
     lines = ["# Database Schema & Semantic Metrics Context\n"]

@@ -319,3 +319,43 @@ class IngestReject(Base):
     line_no: Mapped[int] = mapped_column(Integer)
     reason: Mapped[str] = mapped_column(String(120))
     raw_line: Mapped[str] = mapped_column(String(200))
+
+
+# ---------------------------------------------------------------- notifications (F3)
+
+
+class Subscription(Base):
+    """Milestone/alert subscription (Cathay Track & Trace style)."""
+
+    __tablename__ = "dim_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    subscriber_email: Mapped[str] = mapped_column(String(120))
+    shipment_id: Mapped[str | None] = mapped_column(String(30), nullable=True, index=True)
+    # NULL shipment_id = global subscription (all high-severity alerts)
+    notify_on: Mapped[str] = mapped_column(String(60))  # csv: ALERT,DELAY,MISSING
+    delay_threshold_min: Mapped[int] = mapped_column(Integer)
+    channel: Mapped[str] = mapped_column(String(10))  # email | webhook
+    created_ts: Mapped[str] = mapped_column(String(30))
+
+    # never reuse rowids: outbox rows reference deleted subscriptions by id
+    __table_args__ = {"sqlite_autoincrement": True}
+
+
+class NotificationOutbox(Base):
+    """Transactional outbox — rows are enqueued on events and marked sent by the
+    dispatch worker (SMTP optional; the ledger is the proof of delivery intent)."""
+
+    __tablename__ = "notification_outbox"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    subscription_id: Mapped[int] = mapped_column(Integer, index=True)
+    event_type: Mapped[str] = mapped_column(String(20))  # ALERT | DELAY | MISSING
+    shipment_id: Mapped[str] = mapped_column(String(30))
+    subject: Mapped[str] = mapped_column(String(160))
+    body: Mapped[str] = mapped_column(String(800))
+    channel: Mapped[str] = mapped_column(String(10))
+    created_ts: Mapped[str] = mapped_column(String(30))
+    sent_ts: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    __table_args__ = {"sqlite_autoincrement": True}

@@ -27,6 +27,16 @@ def _horizon(conn: sqlite3.Connection) -> str:
     ).fetchone()[0]
 
 
+def evaluate_rule_meta(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    return [
+        {"rule_id": r[0], "name": r[1], "rule_type": r[2], "code": r[3],
+         "threshold_minutes": r[4], "severity": r[5]}
+        for r in conn.execute(
+            "SELECT rule_id, name, rule_type, code, threshold_minutes, severity FROM fact_alert_rules"
+        ).fetchall()
+    ]
+
+
 def _next_alert_id(conn: sqlite3.Connection) -> str:
     row = conn.execute("SELECT MAX(alert_id) FROM fact_alerts").fetchone()[0]
     n = int(row.split("-")[1]) + 1 if row else 1
@@ -106,7 +116,7 @@ def evaluate(conn: sqlite3.Connection, now: str) -> dict[str, list[dict[str, Any
     return out
 
 
-def sync(conn: sqlite3.Connection) -> dict[str, int]:
+def sync(conn: sqlite3.Connection) -> dict[str, Any]:
     """Evaluate rules and upsert OPEN alerts. Idempotent across re-runs."""
     now = _horizon(conn)
     candidates = evaluate(conn, now)
@@ -118,16 +128,21 @@ def sync(conn: sqlite3.Connection) -> dict[str, int]:
     next_num = int((conn.execute("SELECT MAX(alert_id) FROM fact_alerts").fetchone()[0] or "AL-000000").split("-")[1]) + 1
 
     created = 0
+    created_alerts: list[dict[str, Any]] = []
     inserts = []
     for rule_id in sorted(candidates):
+        rule_meta = next(
+            r for r in evaluate_rule_meta(conn) if r["rule_id"] == rule_id
+        )
         for cand in candidates[rule_id]:
             key = (cand["shipment_id"], rule_id)
             if key in existing:
                 continue
             existing.add(key)
+            alert_id = f"AL-{next_num:06d}"
             inserts.append(
                 (
-                    f"AL-{next_num:06d}",
+                    alert_id,
                     cand["shipment_id"],
                     cand["rule_id"],
                     "rules",
@@ -138,6 +153,17 @@ def sync(conn: sqlite3.Connection) -> dict[str, int]:
                     now,
                     now,
                 )
+            )
+            created_alerts.append(
+                {
+                    "alert_id": alert_id,
+                    "shipment_id": cand["shipment_id"],
+                    "rule_id": rule_id,
+                    "severity": cand["severity"],
+                    "title": cand["title"],
+                    "detail": cand["detail"],
+                    "event_kind": "MISSING" if rule_meta["rule_type"] == "missing_event" else "DELAY",
+                }
             )
             next_num += 1
             created += 1
@@ -153,4 +179,4 @@ def sync(conn: sqlite3.Connection) -> dict[str, int]:
     )
     conn.commit()
     open_count = conn.execute("SELECT COUNT(*) FROM fact_alerts WHERE status = 'OPEN'").fetchone()[0]
-    return {"created": created, "open_total": open_count}
+    return {"created": created, "open_total": open_count, "alerts": created_alerts}

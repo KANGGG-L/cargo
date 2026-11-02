@@ -14,9 +14,13 @@ def _rw():
 
 
 def setup_module(module):
-    """Fresh DB state: rebuild alerts from rules so补录 has something to resolve."""
+    """Restore the pre-ingest precondition so the file is rerun-safe."""
     conn = _rw()
     try:
+        conn.execute(
+            "DELETE FROM fact_milestone_events WHERE source='fsu' "
+            "AND shipment_id IN ('SHP-2025-007919', 'SHP-2025-007904')"
+        )
         conn.execute("DELETE FROM fact_alerts WHERE source = 'rules'")
         conn.commit()
         sync(conn)

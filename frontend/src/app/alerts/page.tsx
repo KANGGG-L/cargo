@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { AlertItem, AlertSummary } from "@/lib/api";
+import type { AlertItem, AlertSummary, OutboxRow } from "@/lib/api";
 
 const SEVERITY_STYLE: Record<string, string> = {
   high: "bg-rose-950/60 text-rose-300 border-rose-800",
@@ -39,13 +39,17 @@ export default function AlertsPage() {
 
   const load = useCallback(async () => {
     setAlerts(null);
-    const [list, sum] = await Promise.all([
+    const [list, sum, box] = await Promise.all([
       api.alerts(status || undefined, severity || undefined),
       api.alertSummary(),
+      api.outbox(),
     ]);
     setAlerts(list);
     setSummary(sum);
+    setOutbox(box);
   }, [status, severity]);
+
+  const [outbox, setOutbox] = useState<OutboxRow[] | null>(null);
 
   useEffect(() => {
     load().catch((e) => setError(String(e)));
@@ -71,6 +75,16 @@ export default function AlertsPage() {
       await load();
     } catch (e) {
       setError(String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function dispatchAll() {
+    setBusy("dispatch");
+    try {
+      await api.dispatchNotifications();
+      await load();
     } finally {
       setBusy(null);
     }
@@ -195,6 +209,36 @@ export default function AlertsPage() {
           </div>
         ))}
       </div>
+      {/* notification outbox */}
+      <div className="rounded-xl border border-slate-800 bg-[#0f1729] p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-300">
+            Notification Outbox <span className="ml-2 text-[10px] font-normal text-slate-500">transactional · SMTP worker simulated</span>
+          </h3>
+          <button
+            onClick={dispatchAll}
+            disabled={busy === "dispatch"}
+            className="rounded-lg border border-slate-700 px-3 py-1 text-[10px] font-medium text-slate-300 hover:border-cyan-700 hover:text-cyan-300 disabled:opacity-40"
+          >
+            {busy === "dispatch" ? "Dispatching…" : "Dispatch pending"}
+          </button>
+        </div>
+        {outbox?.length === 0 && <div className="text-xs text-slate-500">Outbox empty — subscribe on the Network page.</div>}
+        <div className="space-y-1.5">
+          {(outbox ?? []).slice(0, 12).map((o) => (
+            <div key={o.id} className="flex items-center gap-3 rounded-lg border border-slate-800/60 px-2.5 py-1.5 text-[11px]">
+              <span className={`rounded border px-1.5 py-0.5 text-[9px] ${o.sent_ts ? "border-emerald-800 text-emerald-400" : "border-amber-800 text-amber-400"}`}>
+                {o.sent_ts ? "SENT" : "PENDING"}
+              </span>
+              <span className="text-slate-300">{o.subscriber_email}</span>
+              <span className="min-w-0 flex-1 truncate text-slate-500">{o.subject}</span>
+              <span className="font-mono text-cyan-300">{o.shipment_id}</span>
+              <span className="text-slate-600">{o.created_ts.slice(5, 16).replace("T", " ")}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
+

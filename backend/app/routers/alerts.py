@@ -34,9 +34,14 @@ def _now() -> str:
 def sync_alerts():
     conn = _ro()
     try:
-        return sync(conn)
+        result = sync(conn)
     finally:
         conn.close()
+
+    from app.notifications.outbox import enqueue_for_alerts
+
+    enqueued = enqueue_for_alerts(result.get("alerts", []))
+    return {k: v for k, v in result.items() if k != "alerts"} | {"notifications_enqueued": enqueued}
 
 
 @router.get("")

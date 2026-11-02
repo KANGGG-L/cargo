@@ -46,6 +46,21 @@ export default function NetworkPage() {
   const [trace, setTrace] = useState<TracePayload | null>(null);
   const [milestones, setMilestones] = useState<MilestoneRow[] | null>(null);
   const [sankey, setSankey] = useState<SankeyPayload | null>(null);
+  const [subEmail, setSubEmail] = useState("");
+  const [subOpen, setSubOpen] = useState(false);
+  const [subMsg, setSubMsg] = useState<string | null>(null);
+
+  async function subscribe() {
+    if (!selectedId) return;
+    try {
+      await api.subscribe(subEmail, selectedId);
+      setSubMsg(`Subscribed ${subEmail} to ${selectedId} milestones & delay alerts`);
+      setSubOpen(false);
+      setSubEmail("");
+    } catch (e) {
+      setSubMsg(String(e));
+    }
+  }
 
   useEffect(() => {
     api.shipments(chain === "ALL" ? undefined : chain, status || undefined)
@@ -187,7 +202,30 @@ export default function NetworkPage() {
                   {Math.round(trace.shipment.total_chargeable_weight_kg).toLocaleString()} kg ·{" "}
                   ${Math.round(trace.shipment.contracted_revenue_usd).toLocaleString()}
                 </span>
+                <button
+                  onClick={() => setSubOpen((o) => !o)}
+                  className="rounded-md border border-slate-700 px-2 py-1 text-[10px] text-slate-300 hover:border-cyan-700 hover:text-cyan-300"
+                >
+                  🔔 Subscribe
+                </button>
               </div>
+              {subOpen && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-800 bg-black/20 p-2">
+                  <input
+                    value={subEmail}
+                    onChange={(e) => setSubEmail(e.target.value)}
+                    placeholder="ops@customer.com"
+                    className="flex-1 rounded border border-slate-700 bg-[#0a0f1d] px-2 py-1 text-xs text-slate-200 focus:border-cyan-700 focus:outline-none"
+                  />
+                  <button
+                    onClick={subscribe}
+                    className="rounded bg-cyan-700 px-3 py-1 text-xs text-white hover:bg-cyan-600"
+                  >
+                    Confirm
+                  </button>
+                </div>
+              )}
+              {subMsg && <div className="mb-2 text-[11px] text-emerald-400">{subMsg}</div>}
 
               {/* shipment-level dual-track milestones */}
               {milestones && (

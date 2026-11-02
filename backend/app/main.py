@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings, is_mock_mode
-from app.routers import alerts, analytics, chat, ingest, shipments
+from app.routers import alerts, analytics, chat, ingest, notifications, shipments
 
 settings = get_settings()
 
@@ -21,6 +21,7 @@ app.include_router(chat.router)
 app.include_router(shipments.router)
 app.include_router(alerts.router)
 app.include_router(ingest.router)
+app.include_router(notifications.router)
 
 
 @app.get("/api/health")

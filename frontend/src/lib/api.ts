@@ -201,6 +201,19 @@ export interface MilestoneRow {
   deviation: "MISSING" | "LATE" | "ON_TIME";
 }
 
+export interface OutboxRow {
+  id: number;
+  subscription_id: number;
+  event_type: string;
+  shipment_id: string;
+  subject: string;
+  body: string;
+  channel: string;
+  created_ts: string;
+  sent_ts: string | null;
+  subscriber_email: string;
+}
+
 export const api = {
   overview: () => getJson<OverviewPayload>("/api/analytics/overview"),
   trends: () => getJson<TrendsPayload>("/api/analytics/trends"),
@@ -231,4 +244,22 @@ export const api = {
       if (!r.ok) throw new Error((await r.json()).detail ?? String(r.status));
       return r.json();
     }),
+  subscribe: (email: string, shipmentId: string) =>
+    fetch(`${API_BASE}/api/notifications/subscriptions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        shipment_id: shipmentId,
+        notify_on: "ALERT,DELAY,MISSING",
+        delay_threshold_min: 120,
+        channel: "email",
+      }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error((await r.json()).detail ?? String(r.status));
+      return r.json();
+    }),
+  outbox: () => getJson<OutboxRow[]>("/api/notifications/outbox?limit=50"),
+  dispatchNotifications: () =>
+    fetch(`${API_BASE}/api/notifications/dispatch`, { method: "POST" }).then((r) => r.json()),
 };

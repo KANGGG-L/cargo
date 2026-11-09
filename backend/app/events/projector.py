@@ -89,7 +89,51 @@ FROM dim_transport_services s
 GROUP BY day, s.transport_mode
 """
 
+# R4-4 data-quality SLA view: coverage, freshness, late events, source trust.
+# Every metric is a pure SQL aggregate so it can be independently re-computed
+# (answers "how do you prove 96.7% coverage isn't made up?").
+CREATE_DATA_QUALITY_VIEW = """
+CREATE VIEW IF NOT EXISTS v_data_quality AS
+WITH plan AS (SELECT COUNT(*) AS planned FROM fact_milestones_plan),
+     reported AS (
+       SELECT COUNT(*) AS covered FROM fact_milestones_plan p
+       WHERE EXISTS (
+         SELECT 1 FROM fact_milestone_events e
+         WHERE e.shipment_id = p.shipment_id AND e.code = p.code
+           AND ((e.leg_id IS NULL AND p.leg_id IS NULL) OR e.leg_id = p.leg_id))
+     ),
+     late AS (
+       SELECT COUNT(*) AS late_events FROM fact_milestones_plan p
+       JOIN fact_milestone_events e
+         ON e.shipment_id = p.shipment_id AND e.code = p.code
+        AND ((e.leg_id IS NULL AND p.leg_id IS NULL) OR e.leg_id = p.leg_id)
+       WHERE (julianday(e.event_ts) - julianday(p.planned_ts)) * 1440.0 > 60
+     ),
+     rej AS (
+       SELECT COALESCE(SUM(rejected),0) AS rejected, COALESCE(SUM(parsed),0) AS parsed
+       FROM ingest_log
+     )
+SELECT
+  (SELECT planned FROM plan) AS planned_milestones,
+  (SELECT covered FROM reported) AS covered_milestones,
+  ROUND(100.0 * (SELECT covered FROM reported) / NULLIF((SELECT planned FROM plan),0), 2) AS coverage_pct,
+  (SELECT late_events FROM late) AS late_events,
+  ROUND(100.0 * (SELECT late_events FROM late) / NULLIF((SELECT covered FROM reported),0), 2) AS late_pct,
+  (SELECT rejected FROM rej) AS ingest_rejected,
+  (SELECT parsed FROM rej) AS ingest_parsed,
+  ROUND(100.0 * (SELECT rejected FROM rej) / NULLIF((SELECT rejected FROM rej)+(SELECT parsed FROM rej),0), 2) AS reject_pct
+"""
+
+# source trust distribution from the event log (R4-4)
+CREATE_SOURCE_TRUST_VIEW = """
+CREATE VIEW IF NOT EXISTS v_source_trust AS
+SELECT source, trust_level, COUNT(*) AS n
+FROM fact_event_log GROUP BY source, trust_level
+"""
+
 
 def ensure_views(conn: sqlite3.Connection) -> None:
     conn.execute(CREATE_CAPACITY_VIEW)
+    conn.execute(CREATE_DATA_QUALITY_VIEW)
+    conn.execute(CREATE_SOURCE_TRUST_VIEW)
     conn.commit()

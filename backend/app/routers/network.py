@@ -182,3 +182,13 @@ def capacity_timeseries(
         "utilization": [dict(r) for r in util],
         "rolled_by_reason": [dict(r) for r in rolled],
     }
+
+
+@router.get("/data-quality")
+def data_quality(request: Request, db: Session = Depends(get_db)):
+    """Data-quality SLA panel (R4-4): coverage, freshness, reject rate, trust mix.
+    Every figure is a re-computable SQL aggregate."""
+    require_ops(request)
+    dq = db.execute(text("SELECT * FROM v_data_quality")).mappings().one_or_none()
+    trust = db.execute(text("SELECT * FROM v_source_trust ORDER BY source")).mappings().all()
+    return {"quality": dict(dq) if dq else {}, "source_trust": [dict(r) for r in trust]}

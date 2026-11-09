@@ -905,6 +905,7 @@ AIR_DIST = {
     "NRT": 2900, "SIN": 2560, "SYD": 7390,
 }
 ULD_TYPES = [("PMC", 6800.0, 11.5), ("PAG", 5100.0, 10.2), ("AKE", 1500.0, 4.3)]
+DG_PER_SERVICE_LIMIT = 2  # dangerous-goods count cap per AIR service (R4-3)
 
 PRIORITY_BY_CATEGORY = {
     "Pharma_Cold_Chain": "PHARMA",
@@ -1087,19 +1088,25 @@ def assign_allocations(shipments, legs, services, index, disruption_events):
             roll_reason = "DISRUPTION"
             status = "ROLLED"
 
-        # choose the earliest feasible, non-cancelled service WITH remaining room
+        # choose the earliest feasible, non-cancelled service WITH remaining room.
+        # DG cargo additionally respects a per-service DG count limit (R4-3).
         chosen = None
         for svc in feasible:
             if svc["status"] == "CANCELLED":
                 continue
-            if (svc["allocated_kg"] + w <= svc["capacity_chargeable_kg"]
-                    and svc["allocated_cbm"] + v <= svc["capacity_cbm"]):
+            room = (svc["allocated_kg"] + w <= svc["capacity_chargeable_kg"]
+                    and svc["allocated_cbm"] + v <= svc["capacity_cbm"])
+            dg_ok = True
+            if pc == "DG" and svc["transport_mode"] == "AIR":
+                if svc.setdefault("_dg_count", 0) >= DG_PER_SERVICE_LIMIT:
+                    dg_ok = False
+            if room and dg_ok:
                 chosen = svc
                 break
             else:
                 if rolled_from is None:
                     rolled_from = svc["service_id"]
-                    roll_reason = "CAPACITY"
+                    roll_reason = "DG_LIMIT" if (not dg_ok and room) else "CAPACITY"
                 if status == "CONFIRMED":
                     status = "REACCOMMODATED"
 
@@ -1112,6 +1119,8 @@ def assign_allocations(shipments, legs, services, index, disruption_events):
 
         chosen["allocated_kg"] += w
         chosen["allocated_cbm"] += v
+        if pc == "DG" and chosen["transport_mode"] == "AIR":
+            chosen["_dg_count"] = chosen.get("_dg_count", 0) + 1
         # MAWB per service, HAWB per shipment
         mawb = mawb_by_service.get(chosen["service_id"])
         if mawb is None and chosen["transport_mode"] == "AIR":
@@ -1142,10 +1151,11 @@ def assign_allocations(shipments, legs, services, index, disruption_events):
         # backfill the display number on the leg so legs/services agree
         leg["voyage_flight_no"] = chosen["service_no"]
 
-    # round rollup columns
+    # round rollup columns and strip transient allocation bookkeeping
     for svc in services:
         svc["allocated_kg"] = round(svc["allocated_kg"], 1)
         svc["allocated_cbm"] = round(svc["allocated_cbm"], 2)
+        svc.pop("_dg_count", None)
     print(f"[OK] Generated {len(allocations)} allocations "
           f"({rolled_cascade} rolled by disruption cascade)")
     return allocations

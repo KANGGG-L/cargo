@@ -13,12 +13,14 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from app.config import get_settings
+from app.ingest.standards import ACCEPTED_CODES, resolve_code
 
 LINE_RE = re.compile(
     r"^FSU\|([A-Z]{3})\|([A-Z0-9-]+)\|([A-Z]{3})\|(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$"
 )
 
-KNOWN_CODES = {"BKD", "RCS", "DEP", "ARR", "NFD", "DLV"}
+# internal codes + accepted CIMP/standard aliases (R4-1)
+KNOWN_CODES = ACCEPTED_CODES
 
 
 @dataclass
@@ -77,6 +79,8 @@ def parse_and_ingest(conn: sqlite3.Connection, raw: str, source_name: str = "rep
                     {"line_no": line_no, "reason": f"unknown milestone code {code}", "raw_line": line[:200]}
                 )
                 continue
+            # resolve CIMP/standard alias -> internal code (R4-1)
+            code = resolve_code(code) or code
             if not _valid_ts(ts):
                 result.rejected += 1
                 result.rejects.append(

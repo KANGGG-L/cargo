@@ -343,6 +343,9 @@ class Subscription(Base):
     channel: Mapped[str] = mapped_column(String(10))  # email | webhook
     webhook_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_ts: Mapped[str] = mapped_column(String(30))
+    # R4-2 subscription/callback contract (DCSA v2.2-style, public parts only)
+    event_types: Mapped[str | None] = mapped_column(String(120), nullable=True)  # csv event-type filter
+    secret: Mapped[str | None] = mapped_column(String(80), nullable=True)  # HMAC signing secret
 
     # never reuse rowids: outbox rows reference deleted subscriptions by id
     __table_args__ = {"sqlite_autoincrement": True}
@@ -363,6 +366,12 @@ class NotificationOutbox(Base):
     channel: Mapped[str] = mapped_column(String(10))
     created_ts: Mapped[str] = mapped_column(String(30))
     sent_ts: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    # R4-2 idempotent signed delivery with backoff
+    dedupe_key: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
+    signature: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    attempt_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    next_retry_ts: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     __table_args__ = {"sqlite_autoincrement": True}
 

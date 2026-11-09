@@ -31,6 +31,9 @@ ALLOWED_TABLES = {
     # event layer (P1) — read-only
     "fact_event_log",
     "v_capacity_state",
+    # data quality (R4-4) — read-only
+    "v_data_quality",
+    "v_source_trust",
     # agent-own runtime tables — the analyst must see its own alerts
     "fact_alerts",
     "fact_alert_rules",

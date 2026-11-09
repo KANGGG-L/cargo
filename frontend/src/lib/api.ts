@@ -322,9 +322,9 @@ export const api = {
     }).then((r) => r.json()),
   opsClockStop: () =>
     fetch(`${API_BASE}/api/ops/clock/stop`, { method: "POST", credentials: "include" }).then((r) => r.json()),
-  networkServices: (mode?: string, status?: string, limit = 100) =>
+  networkServices: (mode?: string, status?: string, limit = 100, sort?: string) =>
     getJson<NetworkServiceRow[]>(
-      `/api/network/services?limit=${limit}${mode ? `&mode=${mode}` : ""}${status ? `&status=${status}` : ""}`
+      `/api/network/services?limit=${limit}${mode ? `&mode=${mode}` : ""}${status ? `&status=${status}` : ""}${sort ? `&sort=${sort}` : ""}`
     ),
   networkCapacity: (mode?: string) =>
     getJson<CapacityPayload>(`/api/network/capacity${mode ? `?mode=${mode}` : ""}`),

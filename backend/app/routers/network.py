@@ -28,14 +28,19 @@ def list_services(
     status: str | None = Query(None, description="SCHEDULED | CANCELLED | DEPARTED | RECOVERING"),
     date_from: str | None = Query(None, alias="from"),
     date_to: str | None = Query(None, alias="to"),
+    sort: str = Query("depart", description="depart | load"),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """Service list with live capacity water-line (allocated vs capacity)."""
     require_ops(request)
+    order_by = (
+        "load_factor DESC" if sort == "load"
+        else "scheduled_depart_ts"
+    )
     rows = db.execute(
         text(
-            """
+            f"""
             SELECT service_id, transport_mode, carrier_code, service_no,
                    origin_facility, destination_facility,
                    scheduled_depart_ts, scheduled_arrive_ts, cutoff_ts,
@@ -51,7 +56,7 @@ def list_services(
               AND (:status IS NULL OR status = :status)
               AND (:dfrom IS NULL OR scheduled_depart_ts >= :dfrom)
               AND (:dto IS NULL OR scheduled_depart_ts <= :dto)
-            ORDER BY scheduled_depart_ts
+            ORDER BY {order_by}
             LIMIT :limit
             """
         ),

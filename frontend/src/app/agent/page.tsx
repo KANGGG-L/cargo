@@ -151,8 +151,10 @@ export default function AgentPage() {
           </span>
         </div>
         <p className="text-[11px] leading-relaxed text-zinc-500">
-          One agent, four tools: Text-to-SQL querying, anomaly diagnosis,
-          disruption simulation and freight quotes. {llmMode === "mock" && "Mock mode replays verified traces against the real database — no API key needed."}
+          One agent, ten tools: Text-to-SQL querying, anomaly diagnosis,
+          disruption simulation (fifo/des A/B), freight quotes, alert creation,
+          ETA prediction, plus network load, capacity impact, reroute options and
+          manifest lookup. {llmMode === "mock" && "Mock mode replays verified traces against the real database — no API key needed."}
         </p>
         <div className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
           Try asking
@@ -215,6 +217,7 @@ export default function AgentPage() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send(input)}
               placeholder="e.g. Why did sea OTP drop in March 2026?"
+              aria-label="Ask the operations analyst"
               disabled={streaming}
               className="flex-1 rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none disabled:opacity-50"
             />

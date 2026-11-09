@@ -81,6 +81,25 @@ def test_capacity_series():
     assert "DISRUPTION" in reasons or "CAPACITY" in reasons
 
 
+def test_services_sort_by_load():
+    """sort=load returns services ordered by descending load_factor (the fix for
+    the capacity page showing an arbitrary 100-row window instead of the busiest
+    services — caught in browser UAT)."""
+    c = _client()
+    r = c.get("/api/network/services", params={"mode": "AIR", "sort": "load", "limit": 10})
+    assert r.status_code == 200
+    body = r.json()
+    loads = [row["load_factor"] for row in body]
+    assert loads == sorted(loads, reverse=True), "sort=load not descending"
+    # the top service must match the SQL-busiest AIR service
+    top = _sql(
+        "SELECT ROUND(allocated_kg / capacity_chargeable_kg, 4) FROM dim_transport_services "
+        "WHERE transport_mode='AIR' AND capacity_chargeable_kg > 0 "
+        "ORDER BY allocated_kg / capacity_chargeable_kg DESC LIMIT 1"
+    )[0][0]
+    assert abs(body[0]["load_factor"] - top) < 0.001
+
+
 def test_trace_includes_service_and_coload():
     c = _client()
     # a shipment whose air leg is allocated to a shared service

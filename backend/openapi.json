@@ -1261,6 +1261,18 @@
             }
           },
           {
+            "description": "depart | load",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "depart",
+              "description": "depart | load",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,

@@ -581,6 +581,44 @@ class Allocation(Base):
     )
 
 
+# ---------------------------------------------------------------- governance (R5)
+
+
+class AgentToolAudit(Base):
+    """Every agent tool call — especially write tools — is audited (R5-2).
+    NOT exposed to the LLM firewall (contains args + source-text hashes)."""
+
+    __tablename__ = "fact_agent_tool_audit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tool_name: Mapped[str] = mapped_column(String(40))
+    tool_kind: Mapped[str] = mapped_column(String(6))  # read | write
+    args_json: Mapped[str] = mapped_column(String(800))
+    source_text_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    confirmed: Mapped[int] = mapped_column(Integer)  # 0/1
+    result_summary: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_ts: Mapped[str] = mapped_column(String(30))
+
+    __table_args__ = ({"sqlite_autoincrement": True},)
+
+
+class AccessLog(Base):
+    """Data-endpoint access audit (R5-3): who touched which table/scope.
+    NOT exposed to the LLM firewall."""
+
+    __tablename__ = "fact_access_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    principal: Mapped[str] = mapped_column(String(120))  # email or 'anonymous'
+    role: Mapped[str] = mapped_column(String(10))
+    method: Mapped[str] = mapped_column(String(8))
+    path: Mapped[str] = mapped_column(String(200))
+    status: Mapped[int] = mapped_column(Integer)
+    created_ts: Mapped[str] = mapped_column(String(30))
+
+    __table_args__ = ({"sqlite_autoincrement": True},)
+
+
 # ---------------------------------------------------------------- event log (P1)
 
 

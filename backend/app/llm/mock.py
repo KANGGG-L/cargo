@@ -143,6 +143,7 @@ MOCK_PLANS: list[dict[str, Any]] = [{
                     "title": "Yantian feeder delay risk - rebooking required",
                     "detail": "Feeder delay jumped from ~3 h baseline to ~17 h during the Mar 1-15 congestion window; downstream air connection at risk.",
                     "severity": "high",
+                    "confirmation_token": "34a35b5d6a8491a7",
                 },
             },
         ],

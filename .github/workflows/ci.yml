@@ -20,9 +20,23 @@ jobs:
         run: |
           python scripts/generate_data.py
           python scripts/init_db.py
-      - name: Test suite (67 tests: firewall, milestones, ingest, ETA, clock, portal)
+      - name: Test suite (140 tests: firewall, invariants, DES, events, standards, governance, eval)
         working-directory: backend
         run: python -m pytest tests/ -q
+      - name: Determinism check (network CSVs byte-identical on re-run)
+        working-directory: backend
+        run: |
+          shasum data/../../data/synthetic/dim_transport_services.csv data/../../data/synthetic/fact_allocations.csv > /tmp/h1 || true
+          python scripts/generate_data.py
+          shasum ../data/synthetic/dim_transport_services.csv ../data/synthetic/fact_allocations.csv > /tmp/h2
+          python scripts/generate_data.py
+          shasum ../data/synthetic/dim_transport_services.csv ../data/synthetic/fact_allocations.csv > /tmp/h3
+          diff /tmp/h2 /tmp/h3
+      - name: OpenAPI contract in sync
+        working-directory: backend
+        run: |
+          python scripts/export_openapi.py
+          git diff --exit-code openapi.json
 
   frontend:
     runs-on: ubuntu-latest

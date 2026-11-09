@@ -483,14 +483,39 @@ QUOTE_SPEC = ToolSpec(
 
 
 async def tool_raise_alert(
-    shipment_id: str, title: str, detail: str = "", severity: str = "medium"
+    shipment_id: str, title: str, detail: str = "", severity: str = "medium",
+    confirmation_token: str | None = None,
 ) -> ToolResult:
+    from app.agent.governance import (
+        audit_tool_call, confirmation_token as make_token, verify_confirmation,
+    )
+
+    args = {"shipment_id": shipment_id, "title": title, "detail": detail, "severity": severity}
+    # R5-2: a write cannot fire without an explicit confirmation token. First call
+    # returns the token + a preview; the agent must call again echoing the token.
+    if not verify_confirmation("raise_alert", args, confirmation_token):
+        token = make_token("raise_alert", args)
+        audit_tool_call("raise_alert", "write", args, confirmed=False,
+                        result_summary="unconfirmed — token issued", source_text=detail)
+        return ToolResult(
+            summary="confirmation required",
+            payload={"requires_confirmation": True, "confirmation_token": token, "preview": args},
+            llm_digest=(
+                f"raise_alert needs confirmation before it writes a ticket for {shipment_id}. "
+                f"To proceed, call raise_alert again with the same arguments plus "
+                f"confirmation_token=\"{token}\". This human-in-the-loop gate prevents an "
+                f"unverified document field from silently becoming a booked exception."
+            ),
+        )
+
     conn = sqlite3.connect(get_settings().db_path)
     try:
         exists = conn.execute(
             "SELECT 1 FROM dim_shipments WHERE shipment_id = ?", (shipment_id,)
         ).fetchone()
         if not exists:
+            audit_tool_call("raise_alert", "write", args, confirmed=True,
+                            result_summary="rejected — unknown shipment", source_text=detail)
             return ToolResult(
                 summary="shipment not found",
                 payload={"error": f"unknown shipment {shipment_id}"},
@@ -513,6 +538,8 @@ async def tool_raise_alert(
     finally:
         conn.close()
 
+    audit_tool_call("raise_alert", "write", args, confirmed=True,
+                    result_summary=f"created {alert_id}", source_text=detail)
     return ToolResult(
         summary=f"{alert_id} · {severity}",
         payload={"alert_id": alert_id, "shipment_id": shipment_id, "severity": severity, "title": title},
@@ -522,7 +549,7 @@ async def tool_raise_alert(
 
 RAISE_ALERT_SPEC = ToolSpec(
     name="raise_alert",
-    description="Create an exception ticket in the alert workbench from a diagnosis finding, so operations can act on it.",
+    description="Create an exception ticket in the alert workbench from a diagnosis finding. WRITE tool: the first call returns a confirmation_token; call again echoing it to commit (human-in-the-loop gate).",
     parameters={
         "type": "object",
         "properties": {
@@ -530,6 +557,7 @@ RAISE_ALERT_SPEC = ToolSpec(
             "title": {"type": "string", "description": "One-line summary of the exception."},
             "detail": {"type": "string", "description": "Evidence and recommended action."},
             "severity": {"type": "string", "enum": ["info", "medium", "high"]},
+            "confirmation_token": {"type": "string", "description": "Echo the token from the first call to commit the write."},
         },
         "required": ["shipment_id", "title"],
     },

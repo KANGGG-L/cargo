@@ -168,6 +168,14 @@ def test_raise_alert_tool():
             title="Agent: feeder delay risk detected",
             detail="Feeder running 3h late; connection at risk per diagnosis.",
             severity="medium",
+            confirmation_token=asyncio.run(
+                tool_raise_alert(
+                    shipment_id=sid,
+                    title="Agent: feeder delay risk detected",
+                    detail="Feeder running 3h late; connection at risk per diagnosis.",
+                    severity="medium",
+                )
+            ).payload["confirmation_token"],
         )
     )
     assert result.payload["alert_id"].startswith("AL-")

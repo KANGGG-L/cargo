@@ -15,16 +15,17 @@
 3. **告警工作台** — 里程碑缺失/超时规则引擎(R1-R4)、异常工单流转(OPEN→ACK→RESOLVED→CLOSED)、通知订阅(事务性 outbox,按 AWB 订阅)
 4. **订单工作台** — 状态机 DRAFT→QUOTED→BOOKED→IN_PROGRESS→COMPLETED(guards:AWB/危险品申报/RCS 事件)、AWB 分配(模 7 校验位)、文档中心(AWB/DG 申报/装箱单 PDF)、一键结算开票(运费+燃油+THC+滞期费)
 5. **数据接入** — CIMP 风格 FSU 报文进站解析(去重/乱序/拒绝队列),补录到达自动销警
-6. **AI 运营分析师** — 一个 Agent、五个工具:
+6. **AI 运营分析师** — 一个 Agent、十个工具:
    - `query_data` — 自然语言查数(Text-to-SQL + 语义层 + 只读 SQL 防火墙),自动配表和图
    - `diagnose_anomaly` — KPI 偏离基线检测 + 扰动事件归因 + 流程改进建议
-   - `simulate_disruption` — 台风/港口拥堵/口岸拥堵的确定性量化模拟
+   - `simulate_disruption` — 台风/港口拥堵/口岸拥堵的确定性量化模拟(fifo / des 双引擎 A/B)
    - `quote_booking` — 按航线×模态×重量段报价(海空联运)
-   - `raise_alert` — 诊断结论一键生成异常工单(分析闭环到执行)
+   - `raise_alert` — 诊断结论一键生成异常工单(写操作需 confirmation_token 二次确认 + 审计)
+   - `network_load` / `capacity_impact` / `reroute_options` / `manifest_lookup` — 共享运力网络级查询与改配
 7. **客户门户** — cookie 会话 + 角色(ops 全网 / customer 行级隔离)
 8. **运营时钟(V1.0)** — 加速模拟时间驱动里程碑自动发射、规则告警、通知扇出:控制塔是"运行中的系统",不是静态报表
-9. **链路级扰动模拟(V1.0)** — chain-fifo-v1 引擎重放真实航段:枢纽关闭/进港滞留/FIFO 改配/产能约束恢复,输出延误分位数与积压曲线
-10. **预测 ETA(V1.0)** — 订舱即生成计划链路,按同 mode+lane 历史延误经验分位数给出 P50/P80/P95 到达带
+9. **链路级扰动模拟** — chain-fifo-v2 启发式引擎与 des-v1 离散事件引擎(SimPy 共享产能 + 优先级仲裁 + 非匀速恢复)双轨 A/B
+10. **预测 ETA** — 订舱即生成计划链路并绑定共享班次,按 service/mode+lane 历史延误经验分位数给出 P50/P80/P95 到达带与 missed-cutoff 风险
 
 数据里**刻意埋了四个可复现的异常剧情**(超强台风袭港、深圳湾口岸拥堵、盐田港拥堵、HKG-ORD 运价配置事故),诊断与演示 100% 可复现。
 
@@ -82,7 +83,7 @@ pnpm install && pnpm build && pnpm start   # http://localhost:3000
 - **模态无关的数据模型**:运营事实按"段"存储并带 `transport_mode` 字段,空运/海运/陆运叙事共用同一 schema,切换业务线零迁移
 - **mock/live 双模式 LLM**:同一事件接口;mock 用 df 加权匹配语义层 verified few-shot,语言是剧本、数据是真的
 - **确定性合成数据**:seed=42 字节级可复现;延误级联(驳船/卡车晚点 → 脱班改签 → 端到端延误)有物理一致性约束
-- **67 项测试**:防火墙攻击向量、四个异常剧情存在性断言、三模态 KPI 对等、引用完整性、链路模拟确定性、ETA 分位数、报价语义、运营时钟
+- **140 项测试**:防火墙攻击向量、四个异常剧情存在性断言、三模态 KPI 对等、引用完整性、共享运力不变量(容量守恒/配载唯一/截关可行/台风级联)、DES 确定性与优先级仲裁、事件日志幂等、网络级 ETA/告警聚类、标准码映射、数据质量可复算、Agent 写操作审计与确认门、语义层 eval、OpenAPI 契约
 
 ## 数据诚实声明
 

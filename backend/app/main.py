@@ -40,6 +40,35 @@ async def access_log(request, call_next):
         f'"status":{response.status_code},"ms":{dur_ms:.1f}}}',
         flush=True,
     )
+    # R5-3: persist an access-audit row for data endpoints (best-effort, never
+    # blocks the response). /api/health and static assets are skipped.
+    try:
+        path = request.url.path
+        if path.startswith("/api/") and path != "/api/health":
+            import sqlite3 as _sqlite
+            from datetime import datetime as _dt, timezone as _tz
+
+            from app.auth import COOKIE, _resolve_token
+
+            principal, role = "anonymous", "anonymous"
+            tok = request.cookies.get(COOKIE, "")
+            if tok:
+                u = _resolve_token(tok)
+                if u:
+                    principal, role = u.get("email", "?"), u.get("role", "?")
+            conn = _sqlite.connect(settings.db_path)
+            try:
+                conn.execute(
+                    "INSERT INTO fact_access_log (principal, role, method, path, status, created_ts)"
+                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    (principal, role, request.method, path, response.status_code,
+                     _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%SZ")),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+    except Exception:
+        pass
     return response
 
 

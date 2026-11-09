@@ -20,6 +20,8 @@ ALLOWED_TABLES = {
     "fact_shipment_legs",
     "fact_air_kpi_daily",
     "fact_ocean_rate_weekly",
+    "fact_sea_kpi_weekly",
+    "fact_truck_kpi_daily",
     "fact_rate_cards",
     "fact_disruption_events",
     "public_hkg_air_cargo_monthly",

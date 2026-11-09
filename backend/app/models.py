@@ -566,6 +566,35 @@ class Allocation(Base):
     )
 
 
+# ---------------------------------------------------------------- event log (P1)
+
+
+class EventLog(Base):
+    """Append-only normalized event log — the single fact source the milestone
+    events, alerts and capacity water-line are projected from. The ops clock and
+    FSU ingest become event sources rather than writing their own tables directly."""
+
+    __tablename__ = "fact_event_log"
+
+    event_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    dedupe_key: Mapped[str] = mapped_column(String(80), unique=True)
+    aggregate_type: Mapped[str] = mapped_column(String(20))  # SHIPMENT | SERVICE | ULD
+    aggregate_id: Mapped[str] = mapped_column(String(40), index=True)
+    event_type: Mapped[str] = mapped_column(String(40))  # ONE Record-style name
+    event_ts: Mapped[str] = mapped_column(String(30))  # when it happened
+    ingest_ts: Mapped[str] = mapped_column(String(30))  # when we recorded it
+    source: Mapped[str] = mapped_column(String(16))  # clock | fsu | gha | capacity | customs
+    trust_level: Mapped[str] = mapped_column(String(10))  # trusted | unverified | rejected
+    payload_json: Mapped[str] = mapped_column(String(800))
+    correlation_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+
+    __table_args__ = (
+        Index("ix_evlog_aggregate", "aggregate_type", "aggregate_id"),
+        Index("ix_evlog_type_ts", "event_type", "event_ts"),
+        {"sqlite_autoincrement": True},
+    )
+
+
 # ---------------------------------------------------------------- ops clock (V1.0-C)
 
 

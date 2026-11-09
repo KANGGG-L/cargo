@@ -85,6 +85,20 @@ def _emit_for_plan(conn: sqlite3.Connection, plan: dict[str, Any], event_ts: str
             " VALUES (?, ?, ?, ?, 'clock', ?)",
             (plan["shipment_id"], plan["leg_id"], plan["code"], event_ts, key),
         )
+        # mirror into the append-only event log (P1 single-source projection)
+        try:
+            from app.events.adapters import milestone_to_event
+
+            milestone_to_event(
+                conn,
+                shipment_id=plan["shipment_id"],
+                leg_id=plan["leg_id"],
+                code=plan["code"],
+                event_ts=event_ts,
+                source="clock",
+            )
+        except Exception:
+            pass  # event-log mirror is additive; never break the milestone pipeline
         return True
     except sqlite3.IntegrityError:
         return False

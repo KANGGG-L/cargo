@@ -117,6 +117,7 @@ def init_database():
 
     seed_users_and_defaults()
     seed_ops_clock()
+    ensure_event_views()
     print("[OK] Database initialization and ingestion completed successfully.")
 
 
@@ -134,6 +135,18 @@ def seed_ops_clock():
             {"t": horizon},
         )
     print("[OK] Seeded ops clock (paused, sim_now = horizon - 48 h)")
+
+
+def ensure_event_views():
+    """Create the P1 capacity-state read view over the event/allocation tables."""
+    from app.events.projector import ensure_views
+
+    raw = engine.raw_connection()
+    try:
+        ensure_views(raw)
+    finally:
+        raw.close()
+    print("[OK] Ensured event-layer views (v_capacity_state)")
 
 
 def seed_users_and_defaults():

@@ -221,10 +221,12 @@ async def tool_simulate_disruption(
     duration_hours: int | None = None,
     severity: int = 4,
     start_date: str | None = None,
+    engine: str = "fifo",
 ) -> ToolResult:
     from datetime import datetime
 
-    from app.simulation.chain import Scenario, run_chain_simulation
+    from app.simulation.chain import Scenario as ChainScenario, run_chain_simulation
+    from app.simulation.des_engine import Scenario as DesScenario, run_des_simulation
 
     if event_type not in SCENARIO_WINDOWS:
         return ToolResult(
@@ -232,6 +234,8 @@ async def tool_simulate_disruption(
             payload={"error": f"unknown scenario {event_type}"},
             llm_digest=f"Unknown scenario {event_type}. Options: {list(SCENARIO_WINDOWS)}.",
         )
+    if engine not in ("fifo", "des", "both"):
+        engine = "both"
     default_start, default_hours = SCENARIO_WINDOWS[event_type]
     start_s = start_date or default_start
     duration = duration_hours or default_hours
@@ -239,36 +243,73 @@ async def tool_simulate_disruption(
 
     conn = _ro()
     try:
-        result = run_chain_simulation(
-            conn, Scenario(event_type, start, duration, severity)
-        )
+        fifo = None
+        des = None
+        if engine in ("fifo", "both"):
+            fifo = run_chain_simulation(
+                conn, ChainScenario(event_type, start, duration, severity)
+            )
+        if engine in ("des", "both"):
+            # DES import is optional: if simpy is missing, fall back to fifo (R3)
+            try:
+                des = run_des_simulation(
+                    conn, DesScenario(event_type, start, duration, severity)
+                )
+            except ImportError:
+                des = None
+                if fifo is None:
+                    fifo = run_chain_simulation(
+                        conn, ChainScenario(event_type, start, duration, severity)
+                    )
         horizon = _data_horizon(conn)
     finally:
         conn.close()
 
+    # primary result = DES when available, else fifo (DES answers network questions)
+    primary = des or fifo
     payload = {
-        **result,
+        **primary,
         "as_of_data_horizon": horizon,
-        # frontend compatibility: recovery curve = backlog by day
-        "recovery_curve": result["backlog_tonnes_by_day"],
-        "affected_legs": result["cancelled_air_legs"],
+        "recovery_curve": primary["backlog_tonnes_by_day"],
+        "affected_legs": primary["cancelled_air_legs"],
+        "engine_requested": engine,
     }
-    q = result["delay_quantiles_min"]
+    if engine == "both" and fifo is not None and des is not None:
+        payload["fifo_baseline"] = {
+            "model": fifo["model"],
+            "clearance_days": len(fifo["backlog_tonnes_by_day"]),
+            "recovery_curve": fifo["backlog_tonnes_by_day"],
+            "delay_quantiles_min": fifo["delay_quantiles_min"],
+        }
+        payload["des_vs_fifo"] = {
+            "des_model": des["model"],
+            "des_clearance_by_priority": des.get("clearance_day_by_priority", {}),
+            "des_queue_wait_by_priority": des.get("queue_wait_by_priority", {}),
+        }
+
+    q = primary["delay_quantiles_min"]
+    extra = ""
+    if des is not None:
+        cdp = des.get("clearance_day_by_priority", {})
+        if cdp:
+            extra = (
+                " Priority clearance: "
+                + ", ".join(f"{k} {v}" for k, v in sorted(cdp.items()))
+                + "."
+            )
     digest = (
-        f"Chain simulation ({event_type}, {duration} h, severity {severity}/5): "
-        f"{result['affected_shipments']} shipments affected, "
-        f"{result['cancelled_air_legs']} air departures cancelled, "
-        f"{result['held_feeder_legs']} feeder legs held at the hub; "
-        f"re-accommodation delay P50 {q['p50']} min / P80 {q['p80']} / P95 {q['p95']}; "
-        f"revenue at risk ${result['revenue_at_risk_usd']:,.0f}. "
-        f"Model: {result['model']} - FIFO re-accommodation, capacity-constrained recovery. "
-        + " ".join(result["notes"][-2:])
+        f"Disruption simulation ({event_type}, {duration} h, severity {severity}/5, "
+        f"engine={engine}): {primary['affected_shipments']} shipments affected; "
+        f"delay P50 {q['p50']} min / P80 {q['p80']} / P95 {q['p95']}; "
+        f"revenue at risk ${primary['revenue_at_risk_usd']:,.0f}. "
+        f"Model: {primary['model']}.{extra} "
+        + " ".join(primary["notes"][-2:])
     )
     return ToolResult(
         summary=(
-            f"{result['affected_shipments']} shipments · "
-            f"${result['revenue_at_risk_usd'] / 1e6:.2f}M at risk · "
-            f"P95 delay {q['p95'] / 60:.1f} h"
+            f"{primary['affected_shipments']} shipments · "
+            f"${primary['revenue_at_risk_usd'] / 1e6:.2f}M at risk · "
+            f"P95 delay {q['p95'] / 60:.1f} h · {primary['model'].split(' ')[0]}"
         ),
         payload=payload,
         llm_digest=digest,
@@ -296,6 +337,11 @@ SIMULATE_SPEC = ToolSpec(
             },
             "duration_hours": {"type": "integer", "minimum": 6, "maximum": 240},
             "severity": {"type": "integer", "minimum": 1, "maximum": 5},
+            "engine": {
+                "type": "string",
+                "enum": ["fifo", "des", "both"],
+                "description": "fifo = chain heuristic baseline; des = discrete-event resource model; both = A/B compare.",
+            },
         },
     },
     executor=tool_simulate_disruption,

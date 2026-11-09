@@ -28,6 +28,9 @@ ALLOWED_TABLES = {
     "dim_transport_services",
     "dim_ulds",
     "fact_allocations",
+    # event layer (P1) — read-only
+    "fact_event_log",
+    "v_capacity_state",
     # agent-own runtime tables — the analyst must see its own alerts
     "fact_alerts",
     "fact_alert_rules",

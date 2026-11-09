@@ -180,3 +180,92 @@ def sync(conn: sqlite3.Connection) -> dict[str, Any]:
     conn.commit()
     open_count = conn.execute("SELECT COUNT(*) FROM fact_alerts WHERE status = 'OPEN'").fetchone()[0]
     return {"created": created, "open_total": open_count, "alerts": created_alerts}
+
+
+# SLA hours by severity — overdue escalation driver (P2)
+SLA_HOURS = {"high": 4, "medium": 12, "info": 48}
+
+
+def cluster_by_service(conn: sqlite3.Connection) -> dict[str, Any]:
+    """Group OPEN shipment-level alerts by the shared service their air leg rode,
+    creating one SERVICE-scope parent per service with ≥2 affected shipments.
+
+    Idempotent: a service that already has a parent alert is skipped. Child
+    alerts get parent_alert_id + alert_scope='SHIPMENT'; parents carry the
+    affected count and priority breakdown in their detail.
+    """
+    now = _horizon(conn)
+    conn.execute("PRAGMA query_only = OFF")
+
+    # candidate services: >=2 OPEN alerts whose shipment has an allocation on it,
+    # and no existing SERVICE parent yet.
+    rows = conn.execute(
+        """
+        SELECT a.service_id, COUNT(DISTINCT al.alert_id) AS n_alerts,
+               COUNT(DISTINCT al.shipment_id) AS n_shipments,
+               GROUP_CONCAT(DISTINCT a.priority_class) AS classes
+        FROM fact_alerts al
+        JOIN fact_allocations a ON a.shipment_id = al.shipment_id
+        JOIN dim_transport_services s ON s.service_id = a.service_id
+        WHERE al.status = 'OPEN' AND al.alert_scope IS NULL
+        GROUP BY a.service_id
+        HAVING n_shipments >= 2
+        ORDER BY n_shipments DESC
+        LIMIT 100
+        """
+    ).fetchall()
+
+    next_num = int((conn.execute("SELECT MAX(alert_id) FROM fact_alerts").fetchone()[0] or "AL-000000").split("-")[1]) + 1
+    parents_created = 0
+    children_linked = 0
+
+    for service_id, n_alerts, n_shipments, classes in rows:
+        already = conn.execute(
+            "SELECT alert_id FROM fact_alerts WHERE alert_scope = 'SERVICE' AND detail LIKE ?",
+            (f"%{service_id}%",),
+        ).fetchone()
+        if already:
+            continue
+        parent_id = f"AL-{next_num:06d}"
+        next_num += 1
+        # representative shipment for the parent row's shipment_id FK
+        rep = conn.execute(
+            """SELECT al.shipment_id FROM fact_alerts al
+               JOIN fact_allocations a ON a.shipment_id = al.shipment_id
+               WHERE a.service_id = ? AND al.status = 'OPEN' LIMIT 1""",
+            (service_id,),
+        ).fetchone()[0]
+        due = conn.execute(
+            "SELECT strftime('%Y-%m-%dT%H:%M:%SZ', ?, '+4 hours')", (now,)
+        ).fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO fact_alerts (alert_id, shipment_id, rule_id, source, severity,
+                title, detail, status, created_ts, updated_ts, alert_scope, due_ts, escalation_level)
+            VALUES (?, ?, NULL, 'rules', 'high', ?, ?, 'OPEN', ?, ?, 'SERVICE', ?, 0)
+            """,
+            (
+                parent_id, rep,
+                f"Service {service_id}: {n_shipments} shipments affected",
+                f"Clustered exception on service {service_id}; {n_shipments} shipments, "
+                f"{n_alerts} child alerts; priority classes: {classes}.",
+                now, now, due,
+            ),
+        )
+        parents_created += 1
+        # link children
+        conn.execute(
+            """
+            UPDATE fact_alerts SET parent_alert_id = ?, alert_scope = 'SHIPMENT'
+            WHERE status = 'OPEN' AND alert_scope IS NULL AND shipment_id IN (
+                SELECT al.shipment_id FROM fact_alerts al
+                JOIN fact_allocations a ON a.shipment_id = al.shipment_id
+                WHERE a.service_id = ?
+            )
+            """,
+            (parent_id, service_id),
+        )
+        children_linked += conn.execute("SELECT changes()").fetchone()[0]
+
+    conn.commit()
+    return {"service_parents_created": parents_created, "children_linked": children_linked}

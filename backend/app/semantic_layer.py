@@ -282,6 +282,57 @@ TABLE_CATALOG: Dict[str, Dict[str, Any]] = {
             "data_source": "Source citation identifier",
         },
     },
+    "dim_transport_services": {
+        "description": "Shared transport capacity schedule (P0): one row per flight / barge sailing / truck trip that many shipments compete for. Join fact_allocations on service_id to see which shipments ride it.",
+        "columns": {
+            "service_id": "Primary key (SVC-AIR-HKG-ORD-20250915-01)",
+            "transport_mode": "AIR | SEA | TRUCK",
+            "carrier_code": "Operating carrier",
+            "service_no": "Outward service number (CX887) — equals fact_shipment_legs.voyage_flight_no",
+            "origin_facility": "Departure facility code",
+            "destination_facility": "Arrival facility code",
+            "scheduled_depart_ts": "Scheduled departure ISO-8601",
+            "scheduled_arrive_ts": "Scheduled arrival ISO-8601",
+            "cutoff_ts": "Cargo/doc cut-off before departure",
+            "mct_minutes": "Minimum connecting time at the hub",
+            "capacity_chargeable_kg": "Sellable chargeable weight capacity",
+            "allocated_kg": "Chargeable weight currently allocated (load water-line)",
+            "capacity_cbm": "Volume capacity",
+            "allocated_cbm": "Volume allocated",
+            "status": "SCHEDULED | DEPARTED | CANCELLED | RECOVERING",
+            "disruption_event_id": "FK to fact_disruption_events when cancelled by a disruption",
+        },
+    },
+    "fact_allocations": {
+        "description": "Booking bridge (P0): a shipment leg loaded onto a shared service (and ULD). Where capacity contention, roll-over and MAWB/HAWB consolidation live.",
+        "columns": {
+            "allocation_id": "Primary key (ALC-XXXXXX)",
+            "shipment_id": "FK to dim_shipments",
+            "leg_id": "FK to fact_shipment_legs",
+            "service_id": "FK to dim_transport_services",
+            "uld_id": "FK to dim_ulds (AIR only)",
+            "mawb_no": "Master air waybill (per service)",
+            "hawb_no": "House air waybill (per shipment)",
+            "priority_class": "PHARMA | PERISHABLE | HIGH_VALUE | DG | GENERAL",
+            "allocated_weight_kg": "Chargeable weight this allocation occupies",
+            "allocated_volume_cbm": "Volume occupied",
+            "allocation_status": "CONFIRMED | ROLLED | REACCOMMODATED",
+            "rolled_from_service_id": "Service this allocation was rolled off",
+            "roll_reason": "CAPACITY | CUTOFF | MCT | DG_LIMIT | DISRUPTION",
+            "booked_ts": "Booking timestamp",
+            "decided_ts": "Allocation decision timestamp",
+        },
+    },
+    "dim_ulds": {
+        "description": "Unit Load Devices (P0): containers/pallets on an AIR service. One service holds many ULDs; one ULD carries many shipments.",
+        "columns": {
+            "uld_id": "Primary key",
+            "service_id": "FK to dim_transport_services",
+            "uld_type": "PMC | PAG | LD3 | AKE",
+            "max_weight_kg": "Max chargeable weight",
+            "max_volume_cbm": "Max volume",
+        },
+    },
 }
 
 # ---------------------------------------------------------------- Few-Shot Q->SQL Catalog
@@ -673,6 +724,47 @@ FEW_SHOT_QUERY_CATALOG: List[Dict[str, str]] = [
             "WHERE checkpoint = 'SZBP' "
             "  AND report_date BETWEEN '2025-11-05' AND '2025-11-29' "
             "ORDER BY report_date ASC;"
+        ),
+    },
+    {
+        "id": "F1",
+        "category": "Network & Shared Capacity",
+        "question": "Which transport services are the most heavily loaded, by chargeable weight utilisation?",
+        "sql": (
+            "SELECT service_id, service_no, transport_mode, "
+            "       origin_facility || '-' || destination_facility AS lane, "
+            "       ROUND(100.0 * allocated_kg / NULLIF(capacity_chargeable_kg, 0), 1) AS load_pct, "
+            "       (SELECT COUNT(DISTINCT shipment_id) FROM fact_allocations a "
+            "        WHERE a.service_id = s.service_id) AS shipments "
+            "FROM dim_transport_services s "
+            "WHERE allocated_kg > 0 "
+            "ORDER BY load_pct DESC LIMIT 20;"
+        ),
+    },
+    {
+        "id": "F2",
+        "category": "Network & Shared Capacity",
+        "question": "How many shipments were rolled over and for what reasons?",
+        "sql": (
+            "SELECT roll_reason, allocation_status, COUNT(*) AS n "
+            "FROM fact_allocations "
+            "WHERE allocation_status IN ('ROLLED', 'REACCOMMODATED') "
+            "GROUP BY roll_reason, allocation_status "
+            "ORDER BY n DESC;"
+        ),
+    },
+    {
+        "id": "F3",
+        "category": "Network & Shared Capacity",
+        "question": "Which shipments share the same flight as a given shipment on a lane to LAX?",
+        "sql": (
+            "SELECT a2.shipment_id, a2.priority_class, a2.allocated_weight_kg, "
+            "       a2.allocation_status, s.service_no "
+            "FROM fact_allocations a1 "
+            "JOIN fact_allocations a2 ON a2.service_id = a1.service_id "
+            "JOIN dim_transport_services s ON s.service_id = a1.service_id "
+            "WHERE s.destination_facility = 'LAX' AND a2.shipment_id != a1.shipment_id "
+            "ORDER BY a2.priority_class LIMIT 50;"
         ),
     },
 ]

@@ -87,6 +87,29 @@ class MockLLM:
 
 
 MOCK_PLANS: list[dict[str, Any]] = [{
+        "id": "network_capacity",
+        "keywords": ["capacity impact", "rolled", "how many shipments roll", "priority clear",
+                     "network load", "co-loaded", "which shipments", "pharma clear"],
+        "steps": [
+            {
+                "tool": "capacity_impact",
+                "args": {"event_type": "typhoon_hkg_closure", "severity": 5, "engine": "des"},
+            }
+        ],
+        "answer": (
+            "Modelling the HKG typhoon closure (severity 5) as contention for a shared "
+            "build-up resource: ~60 shipments lose their original freighter and queue "
+            "for re-accommodation. The discrete-event model clears them by priority — "
+            "pharma and DG clear first (around D+3), high-value next, and general cargo "
+            "trails to roughly D+6 — because the hub reopens on a capacity ramp, not all "
+            "at once.\n\n"
+            "Playbook: publish priority-tiered clearance ETAs to customers on day one, "
+            "pre-book surge build-up labour for the first 48 h after reopening, and use "
+            "the clustered service alert to action the whole flight's backlog in one "
+            "step rather than ticket-by-ticket."
+        ),
+    },
+    {
         "id": "truck",
         "keywords": ["truck", "checkpoint", "border", "shenzhen bay", "crossing"],
         "steps": [

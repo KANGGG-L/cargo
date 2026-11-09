@@ -293,6 +293,11 @@ class Alert(Base):
     updated_ts: Mapped[str] = mapped_column(String(30))
     assignee: Mapped[str | None] = mapped_column(String(40), nullable=True)
     resolution_note: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # P2 clustering + SLA
+    alert_scope: Mapped[str | None] = mapped_column(String(10), nullable=True)  # SERVICE | SHIPMENT
+    parent_alert_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    due_ts: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    escalation_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 # ---------------------------------------------------------------- ingest (F4)
@@ -484,6 +489,7 @@ class PlannedLeg(Base):
     planned_depart_ts: Mapped[str] = mapped_column(String(30))
     planned_arrive_ts: Mapped[str] = mapped_column(String(30))
     basis: Mapped[str] = mapped_column(String(80))  # which schedule template built it
+    service_id: Mapped[str | None] = mapped_column(String(40), nullable=True)  # P2: points at dim_transport_services
 
     __table_args__ = {"sqlite_autoincrement": True}
 

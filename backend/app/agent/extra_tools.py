@@ -582,3 +582,220 @@ PREDICT_ETA_SPEC = ToolSpec(
     },
     executor=tool_predict_eta,
 )
+
+
+# --------------------------------------------------------------------------
+# P2 network tools: network_load / capacity_impact / reroute_options / manifest_lookup
+
+
+async def tool_network_load(scope: str = "HKG", date_from: str | None = None,
+                            date_to: str | None = None) -> ToolResult:
+    """Current load and backlog for a hub or lane over a window."""
+    conn = _ro()
+    try:
+        where = "WHERE 1=1"
+        params: dict[str, Any] = {}
+        if scope and scope != "ALL":
+            where += " AND (origin_facility = :scope OR destination_facility = :scope)"
+            params["scope"] = scope
+        if date_from:
+            where += " AND scheduled_depart_ts >= :df"
+            params["df"] = date_from
+        if date_to:
+            where += " AND scheduled_depart_ts <= :dt"
+            params["dt"] = date_to
+        row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS services,
+                   SUM(CASE WHEN status='CANCELLED' THEN 1 ELSE 0 END) AS cancelled,
+                   ROUND(SUM(allocated_kg),1) AS allocated_kg,
+                   ROUND(SUM(capacity_chargeable_kg),1) AS capacity_kg,
+                   ROUND(100.0*SUM(allocated_kg)/NULLIF(SUM(capacity_chargeable_kg),0),1) AS load_pct
+            FROM dim_transport_services {where}
+            """,
+            params,
+        ).fetchone()
+        by_mode = conn.execute(
+            f"""SELECT transport_mode, COUNT(*),
+                   ROUND(100.0*SUM(allocated_kg)/NULLIF(SUM(capacity_chargeable_kg),0),1)
+                FROM dim_transport_services {where} GROUP BY transport_mode""",
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+    payload = {
+        "scope": scope,
+        "services": row[0], "cancelled_services": row[1],
+        "allocated_kg": row[2], "capacity_kg": row[3], "load_pct": row[4],
+        "by_mode": [{"mode": m, "services": n, "load_pct": lp} for m, n, lp in by_mode],
+    }
+    digest = (
+        f"Network load for {scope}: {row[0]} services ({row[1]} cancelled), "
+        f"{row[4]}% chargeable-weight utilisation "
+        f"({row[2]:,.0f}/{row[3]:,.0f} kg). "
+        + "; ".join(f"{m} {lp}%" for m, n, lp in by_mode)
+    )
+    return ToolResult(summary=f"{scope}: {row[4]}% load · {row[1]} cancelled", payload=payload, llm_digest=digest)
+
+
+async def tool_capacity_impact(event_type: str = "typhoon_hkg_closure",
+                               severity: int = 5, engine: str = "des") -> ToolResult:
+    """Clearance day and rolled count per priority class after a disruption."""
+    res = await tool_simulate_disruption(event_type, None, severity, engine=engine)
+    p = res.payload
+    payload = {
+        "event_type": event_type, "severity": severity, "engine": p.get("engine", engine),
+        "affected_shipments": p["affected_shipments"],
+        "clearance_day_by_priority": p.get("clearance_day_by_priority", {}),
+        "queue_wait_by_priority": p.get("queue_wait_by_priority", {}),
+        "rolled_shipments": p.get("rolled_shipments"),
+        "revenue_at_risk_usd": p["revenue_at_risk_usd"],
+    }
+    cdp = p.get("clearance_day_by_priority", {})
+    digest = (
+        f"Capacity impact ({event_type}, severity {severity}): "
+        f"{p['affected_shipments']} shipments affected, "
+        f"revenue at risk ${p['revenue_at_risk_usd']:,.0f}. "
+        + ("Clearance by priority: " + ", ".join(f"{k} {v}" for k, v in sorted(cdp.items())) + "." if cdp else "")
+    )
+    return ToolResult(summary=f"{p['affected_shipments']} shipments · {len(cdp)} priority tiers", payload=payload, llm_digest=digest)
+
+
+async def tool_reroute_options(shipment_id: str, at_ts: str | None = None) -> ToolResult:
+    """Alternative feasible services for a shipment's air leg after a missed cut-off."""
+    conn = _ro()
+    try:
+        row = conn.execute(
+            """
+            SELECT l.destination_facility, l.planned_depart_ts, a.service_id
+            FROM fact_shipment_legs l
+            LEFT JOIN fact_allocations a ON a.leg_id = l.leg_id
+            WHERE l.shipment_id = ? AND l.transport_mode = 'AIR' LIMIT 1
+            """,
+            (shipment_id,),
+        ).fetchone()
+        if not row:
+            return ToolResult(
+                summary="no air leg", payload={"error": f"no air leg for {shipment_id}"},
+                llm_digest=f"{shipment_id} has no air leg to reroute.")
+        dest, pdep, cur_service = row
+        after = at_ts or pdep
+        alts = conn.execute(
+            """
+            SELECT service_id, service_no, scheduled_depart_ts, cutoff_ts,
+                   ROUND(100.0*allocated_kg/NULLIF(capacity_chargeable_kg,0),1) AS load_pct
+            FROM dim_transport_services
+            WHERE transport_mode='AIR' AND origin_facility='HKG' AND destination_facility=?
+              AND status != 'CANCELLED' AND scheduled_depart_ts > ?
+            ORDER BY scheduled_depart_ts LIMIT 5
+            """,
+            (dest, after),
+        ).fetchall()
+    finally:
+        conn.close()
+    options = [
+        {"service_id": s[0], "service_no": s[1], "depart": s[2], "cutoff": s[3],
+         "load_pct": s[4], "has_room": (s[4] or 0) < 100}
+        for s in alts
+    ]
+    digest = (
+        f"Reroute options for {shipment_id} (HKG→{dest}) after {after}: "
+        + (", ".join(f"{o['service_no']} @ {o['depart']} ({o['load_pct']}% full)" for o in options)
+           if options else "no alternative services found in the schedule.")
+    )
+    return ToolResult(
+        summary=f"{len(options)} option(s) to {dest}",
+        payload={"shipment_id": shipment_id, "destination": dest, "current_service": cur_service, "options": options},
+        llm_digest=digest,
+    )
+
+
+async def tool_manifest_lookup(service_id: str) -> ToolResult:
+    """MAWB/HAWB + ULD manifest for a service."""
+    conn = _ro()
+    try:
+        svc = conn.execute(
+            "SELECT service_no, transport_mode, origin_facility, destination_facility, status "
+            "FROM dim_transport_services WHERE service_id = ?", (service_id,),
+        ).fetchone()
+        if not svc:
+            return ToolResult(summary="service not found", payload={"error": f"unknown service {service_id}"},
+                              llm_digest=f"No service {service_id}.")
+        allocs = conn.execute(
+            """SELECT shipment_id, mawb_no, hawb_no, priority_class, allocated_weight_kg, allocation_status
+               FROM fact_allocations WHERE service_id = ? ORDER BY priority_class LIMIT 100""",
+            (service_id,),
+        ).fetchall()
+        ulds = conn.execute(
+            "SELECT uld_id, uld_type, max_weight_kg FROM dim_ulds WHERE service_id = ?", (service_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    payload = {
+        "service_id": service_id, "service_no": svc[0], "mode": svc[1],
+        "lane": f"{svc[2]}-{svc[3]}", "status": svc[4],
+        "shipments": len(allocs),
+        "allocations": [
+            {"shipment_id": a[0], "mawb_no": a[1], "hawb_no": a[2],
+             "priority_class": a[3], "weight_kg": a[4], "status": a[5]} for a in allocs
+        ],
+        "ulds": [{"uld_id": u[0], "uld_type": u[1], "max_weight_kg": u[2]} for u in ulds],
+    }
+    digest = (
+        f"Manifest for {svc[0]} ({service_id}, {svc[2]}→{svc[3]}, status {svc[4]}): "
+        f"{len(allocs)} shipments across {len(ulds)} ULDs."
+    )
+    return ToolResult(summary=f"{svc[0]} · {len(allocs)} shipments · {len(ulds)} ULDs", payload=payload, llm_digest=digest)
+
+
+NETWORK_LOAD_SPEC = ToolSpec(
+    name="network_load",
+    description="Current capacity load and backlog for a hub or lane over a date window (uses the shared-service schedule).",
+    parameters={
+        "type": "object",
+        "properties": {
+            "scope": {"type": "string", "description": "Facility code (HKG, CNYTN, LAX...) or ALL."},
+            "date_from": {"type": "string"}, "date_to": {"type": "string"},
+        },
+    },
+    executor=tool_network_load,
+)
+
+CAPACITY_IMPACT_SPEC = ToolSpec(
+    name="capacity_impact",
+    description="After a disruption, how many shipments roll and when each priority class clears (discrete-event model).",
+    parameters={
+        "type": "object",
+        "properties": {
+            "event_type": {"type": "string", "enum": ["typhoon_hkg_closure", "port_congestion_yantian", "border_congestion_szbp"]},
+            "severity": {"type": "integer", "minimum": 1, "maximum": 5},
+            "engine": {"type": "string", "enum": ["fifo", "des", "both"]},
+        },
+    },
+    executor=tool_capacity_impact,
+)
+
+REROUTE_SPEC = ToolSpec(
+    name="reroute_options",
+    description="List alternative feasible services for a shipment's air leg after a missed cut-off or cancellation.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "shipment_id": {"type": "string"},
+            "at_ts": {"type": "string", "description": "ISO timestamp; only services departing after this are returned."},
+        },
+        "required": ["shipment_id"],
+    },
+    executor=tool_reroute_options,
+)
+
+MANIFEST_SPEC = ToolSpec(
+    name="manifest_lookup",
+    description="MAWB/HAWB and ULD manifest for a transport service (which shipments ride it).",
+    parameters={
+        "type": "object",
+        "properties": {"service_id": {"type": "string"}},
+        "required": ["service_id"],
+    },
+    executor=tool_manifest_lookup,
+)

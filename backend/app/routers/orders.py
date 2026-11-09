@@ -9,11 +9,11 @@ import hashlib
 import sqlite3
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 
-from app.auth import require_session
+from app.auth import require_ops, require_session, require_shipment_access
 from app.config import get_settings
 from app.db import get_db
 
@@ -88,7 +88,8 @@ class AwbRequest(BaseModel):
 
 
 @router.post("")
-def create_order(req: OrderRequest, db=Depends(get_db)):
+def create_order(req: OrderRequest, request: Request, db=Depends(get_db)):
+    require_ops(request)
     cust = db.execute(
         text("SELECT customer_id FROM dim_customers WHERE customer_id = :c"),
         {"c": req.customer_id},
@@ -127,7 +128,8 @@ def create_order(req: OrderRequest, db=Depends(get_db)):
 
 
 @router.get("")
-def list_orders(db=Depends(get_db)):
+def list_orders(request: Request, db=Depends(get_db)):
+    user = require_session(request)
     rows = db.execute(
         text(
             """
@@ -141,15 +143,22 @@ def list_orders(db=Depends(get_db)):
             JOIN dim_shipments s ON s.shipment_id = l.shipment_id
             JOIN dim_customers c ON c.customer_id = s.customer_id
             LEFT JOIN dim_awb a ON a.shipment_id = l.shipment_id
+            WHERE (:customer IS NULL OR s.customer_id = :customer)
             ORDER BY l.id DESC LIMIT 100
             """
-        )
+        ),
+        {"customer": user.get("customer_id") if user.get("role") == "customer" else None},
     ).mappings().all()
     return [dict(r) for r in rows]
 
 
 @router.get("/{shipment_id}")
-def order_detail(shipment_id: str, db=Depends(get_db)):
+def order_detail(shipment_id: str, request: Request, db=Depends(get_db)):
+    owner = db.execute(
+        text("SELECT customer_id FROM dim_shipments WHERE shipment_id = :sid"),
+        {"sid": shipment_id},
+    ).scalar()
+    require_shipment_access(request, owner)
     history = db.execute(
         text(
             "SELECT status, note, ts FROM fact_order_lifecycle "
@@ -177,7 +186,8 @@ def order_detail(shipment_id: str, db=Depends(get_db)):
 
 
 @router.post("/{shipment_id}/transition")
-def transition(shipment_id: str, req: TransitionRequest, db=Depends(get_db)):
+def transition(shipment_id: str, req: TransitionRequest, request: Request, db=Depends(get_db)):
+    require_ops(request)
     conn = _rw()
     try:
         current = _current_status(conn, shipment_id)
@@ -214,18 +224,18 @@ def transition(shipment_id: str, req: TransitionRequest, db=Depends(get_db)):
             booking_ts = shipment["booking_ts"]
             from app.tracking.eta import build_planned_legs
 
-            planned = build_planned_legs(dict(shipment), booking_ts)
+            planned = build_planned_legs(dict(shipment), booking_ts, conn)
             conn.execute("DELETE FROM fact_planned_legs WHERE shipment_id = ?", (shipment_id,))
             conn.executemany(
                 """
                 INSERT INTO fact_planned_legs (shipment_id, leg_sequence, transport_mode,
                   origin_facility, destination_facility, carrier_code,
-                  planned_depart_ts, planned_arrive_ts, basis)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  planned_depart_ts, planned_arrive_ts, basis, service_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [(shipment_id, p["leg_sequence"], p["transport_mode"], p["origin_facility"],
                   p["destination_facility"], p["carrier_code"], p["planned_depart_ts"],
-                  p["planned_arrive_ts"], p["basis"]) for p in planned],
+                  p["planned_arrive_ts"], p["basis"], p.get("service_id")) for p in planned],
             )
         if req.to == "IN_PROGRESS":
             rcs = conn.execute(
@@ -250,8 +260,13 @@ def transition(shipment_id: str, req: TransitionRequest, db=Depends(get_db)):
 
 
 @router.get("/{shipment_id}/eta")
-def order_eta(shipment_id: str, db=Depends(get_db)):
+def order_eta(shipment_id: str, request: Request, db=Depends(get_db)):
     """Empirical-quantile ETA for a booked order (per leg + end-to-end)."""
+    owner = db.execute(
+        text("SELECT customer_id FROM dim_shipments WHERE shipment_id = :sid"),
+        {"sid": shipment_id},
+    ).scalar()
+    require_shipment_access(request, owner)
     from app.tracking.eta import predict_eta
 
     conn = _rw()
@@ -269,7 +284,8 @@ def order_eta(shipment_id: str, db=Depends(get_db)):
 
 
 @router.post("/{shipment_id}/awb")
-def allocate_awb(shipment_id: str, req: AwbRequest, db=Depends(get_db)):
+def allocate_awb(shipment_id: str, req: AwbRequest, request: Request, db=Depends(get_db)):
+    require_ops(request)
     conn = _rw()
     try:
         exists = conn.execute(

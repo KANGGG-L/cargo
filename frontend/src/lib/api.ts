@@ -276,16 +276,17 @@ export const api = {
     }>(`/api/orders/${id}/eta`),
   tracks: (id: string) =>
     getJson<{ shipment_id: string; tracks: TrackLeg[] }>(`/api/shipments/${id}/tracks`),
-  alerts: (status?: string, severity?: string) =>
+  alerts: (status?: string, severity?: string, limit = 200) =>
     getJson<AlertItem[]>(
-      `/api/alerts?limit=200${status ? `&status=${status}` : ""}${severity ? `&severity=${severity}` : ""}`
+      `/api/alerts?limit=${limit}${status ? `&status=${status}` : ""}${severity ? `&severity=${severity}` : ""}`
     ),
   alertSummary: () => getJson<AlertSummary>("/api/alerts/summary"),
   syncAlerts: () =>
-    fetch(`${API_BASE}/api/alerts/sync`, { method: "POST" }).then((r) => r.json()),
+    fetch(`${API_BASE}/api/alerts/sync`, { method: "POST", credentials: "include" }).then((r) => r.json()),
   transitionAlert: (id: string, to: string, note?: string, assignee?: string) =>
     fetch(`${API_BASE}/api/alerts/${id}/transition`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ to, note, assignee }),
     }).then(async (r) => {
@@ -295,6 +296,7 @@ export const api = {
   subscribe: (email: string, shipmentId: string) =>
     fetch(`${API_BASE}/api/notifications/subscriptions`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email,
@@ -309,14 +311,79 @@ export const api = {
     }),
   outbox: () => getJson<OutboxRow[]>("/api/notifications/outbox?limit=50"),
   dispatchNotifications: () =>
-    fetch(`${API_BASE}/api/notifications/dispatch`, { method: "POST" }).then((r) => r.json()),
+    fetch(`${API_BASE}/api/notifications/dispatch`, { method: "POST", credentials: "include" }).then((r) => r.json()),
   opsClock: () => getJson<OpsClockState>("/api/ops/clock"),
   opsClockStart: (speed: number, simNow?: string) =>
     fetch(`${API_BASE}/api/ops/clock/start`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ speed, sim_now: simNow }),
     }).then((r) => r.json()),
   opsClockStop: () =>
-    fetch(`${API_BASE}/api/ops/clock/stop`, { method: "POST" }).then((r) => r.json()),
+    fetch(`${API_BASE}/api/ops/clock/stop`, { method: "POST", credentials: "include" }).then((r) => r.json()),
+  networkServices: (mode?: string, status?: string, limit = 100) =>
+    getJson<NetworkServiceRow[]>(
+      `/api/network/services?limit=${limit}${mode ? `&mode=${mode}` : ""}${status ? `&status=${status}` : ""}`
+    ),
+  networkCapacity: (mode?: string) =>
+    getJson<CapacityPayload>(`/api/network/capacity${mode ? `?mode=${mode}` : ""}`),
+  serviceManifest: (id: string) =>
+    getJson<{ service_id: string; allocations: ManifestAllocation[]; ulds: { uld_id: string; uld_type: string }[] }>(
+      `/api/network/services/${id}/manifest`
+    ),
+  clusterAlerts: () =>
+    fetch(`${API_BASE}/api/alerts/cluster`, { method: "POST", credentials: "include" }).then((r) => r.json()),
+  alertsByService: (status?: string) =>
+    getJson<ServiceAlert[]>(`/api/alerts?group_by=service${status ? `&status=${status}` : ""}`),
+  bulkTransition: (id: string, to: string, note?: string) =>
+    fetch(`${API_BASE}/api/alerts/${id}/bulk-transition`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, note }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error((await r.json()).detail ?? String(r.status));
+      return r.json();
+    }),
 };
+
+export interface NetworkServiceRow {
+  service_id: string;
+  transport_mode: string;
+  service_no: string;
+  origin_facility: string;
+  destination_facility: string;
+  scheduled_depart_ts: string;
+  capacity_chargeable_kg: number;
+  allocated_kg: number;
+  status: string;
+  load_factor: number;
+}
+
+export interface CapacityPayload {
+  utilization: { day: string; allocated_kg: number; capacity_kg: number; cancelled_services: number; services: number }[];
+  rolled_by_reason: { roll_reason: string; n: number }[];
+}
+
+export interface ManifestAllocation {
+  allocation_id: string;
+  shipment_id: string;
+  mawb_no: string;
+  hawb_no: string;
+  priority_class: string;
+  allocated_weight_kg: number;
+  allocation_status: string;
+}
+
+export interface ServiceAlert {
+  alert_id: string;
+  shipment_id: string;
+  severity: string;
+  title: string;
+  detail: string;
+  status: string;
+  due_ts: string | null;
+  escalation_level: number | null;
+  child_count: number;
+}

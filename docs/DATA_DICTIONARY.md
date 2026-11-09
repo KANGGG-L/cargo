@@ -65,3 +65,23 @@
 ## 合成数据生成
 
 `backend/scripts/generate_data.py`,seed=42,2025-05-01 → 2026-10-31 共 18 个月,7,980 票 / 21,936 段。级联逻辑:驳船/卡车晚点 → 若压缩计划停留 <2h 则触发脱班改签(改签延误 ≥ feeder 晚点 + 1.5 h,保证物理一致)→ 末端卡车段叠加空运段延误。重跑字节级一致(md5 已验证)。
+
+## 共享运力网络(P0 新增,2026-11-09)
+
+将"每票独立随机航班号"升级为"票挂载到可被多票竞争的共享班次"。三张新表:
+
+**dim_transport_services** — 班次主数据(空运航班 / 驳船航次 / 卡车班次统一实体)。
+- 主键 `service_id`(如 `SVC-AIR-HKG-ORD-20250915-01`);`service_no` 为对外班次号(回填到 `fact_shipment_legs.voyage_flight_no`)。
+- `cutoff_ts`(截关,起飞前 AIR 48h / SEA 12h / TRUCK 4h)、`mct_minutes`(枢纽最短衔接 AIR 120 / SEA 240 / TRUCK 60)。
+- `capacity_chargeable_kg` / `capacity_cbm` 为可售舱位;`allocated_kg` / `allocated_cbm` 为冗余汇总列,断言 == SUM(fact_allocations)。
+- `status`:SCHEDULED / DEPARTED / CANCELLED / RECOVERING;`disruption_event_id` 关联台风等扰动。
+- **密度口径(D2 修正)**:每 lane 每天 1 班(真实需求 ~1.5 legs/lane/天),平日 55–80% 满载。详见 `docs/acceptance/2026-11-09-p0-shared-capacity.md` §4。
+
+**dim_ulds** — 装载单元(PMC/PAG/AKE),每 AIR 班次 2–6 个,连接票与航班。
+
+**fact_allocations** — 票 ↔ 班次 ↔ ULD 配载桥表。
+- `priority_class`(PHARMA / PERISHABLE / HIGH_VALUE / DG / GENERAL,由 `cargo_category` 映射)。
+- `allocation_status`:CONFIRMED / ROLLED / REACCOMMODATED;`roll_reason`:CAPACITY / CUTOFF / MCT / DG_LIMIT / DISRUPTION;`rolled_from_service_id` 记录滚动来源。
+- 不变量:I1 容量守恒、I2 单 leg 唯一活跃配载、I3 截关/MCT 可行。
+
+规模:services 8,784 / ULDs 15,440 / allocations 13,869;共享班次(>1 票)4,071;台风事件一次滚动 61 票。生成器用独立 `Random(42)` 实例,既有 CSV 字节级不变。

@@ -24,6 +24,10 @@ ALLOWED_TABLES = {
     "fact_disruption_events",
     "public_hkg_air_cargo_monthly",
     "public_scfi_ocean_rate_weekly",
+    # shared capacity network (P0) — read-only for the analyst
+    "dim_transport_services",
+    "dim_ulds",
+    "fact_allocations",
     # agent-own runtime tables — the analyst must see its own alerts
     "fact_alerts",
     "fact_alert_rules",

@@ -488,6 +488,84 @@ class PlannedLeg(Base):
     __table_args__ = {"sqlite_autoincrement": True}
 
 
+# ---------------------------------------------------------------- shared capacity network (P0)
+
+
+class TransportService(Base):
+    """A shared transport capacity instance: one flight / barge sailing / truck trip
+    that many shipments compete for. The central object the network upgrade adds —
+    `voyage_flight_no` on legs now references `service_no` here instead of being a
+    per-shipment random string."""
+
+    __tablename__ = "dim_transport_services"
+
+    service_id: Mapped[str] = mapped_column(String(40), primary_key=True)  # SVC-AIR-HKG-ORD-20250915-01
+    transport_mode: Mapped[str] = mapped_column(String(10))  # AIR | SEA | TRUCK
+    carrier_code: Mapped[str] = mapped_column(String(40))
+    service_no: Mapped[str] = mapped_column(String(20))  # outward number e.g. CX887 (-> voyage_flight_no)
+    origin_facility: Mapped[str] = mapped_column(String(10))
+    destination_facility: Mapped[str] = mapped_column(String(10))
+    scheduled_depart_ts: Mapped[str] = mapped_column(String(30))
+    scheduled_arrive_ts: Mapped[str] = mapped_column(String(30))
+    cutoff_ts: Mapped[str] = mapped_column(String(30))  # cargo + docs must be in before this
+    mct_minutes: Mapped[int] = mapped_column(Integer)  # min connecting time at the hub
+    capacity_chargeable_kg: Mapped[float] = mapped_column(Float)
+    capacity_cbm: Mapped[float] = mapped_column(Float)
+    allocated_kg: Mapped[float] = mapped_column(Float)  # redundant rollup, asserted == SUM(allocations)
+    allocated_cbm: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(20))  # SCHEDULED | DEPARTED | CANCELLED | RECOVERING
+    disruption_event_id: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    __table_args__ = (
+        Index("ix_svc_mode_orig_depart", "transport_mode", "origin_facility", "scheduled_depart_ts"),
+        Index("ix_svc_no_depart", "service_no", "scheduled_depart_ts"),
+    )
+
+
+class Uld(Base):
+    """Unit Load Device — the intermediate load unit connecting pieces to a flight.
+    One service holds many ULDs; one ULD carries many shipments (D1=B)."""
+
+    __tablename__ = "dim_ulds"
+
+    uld_id: Mapped[str] = mapped_column(String(24), primary_key=True)  # PMC-SVC-...-01
+    service_id: Mapped[str] = mapped_column(String(40), ForeignKey("dim_transport_services.service_id"))
+    uld_type: Mapped[str] = mapped_column(String(8))  # PMC | PAG | LD3 | AKE
+    max_weight_kg: Mapped[float] = mapped_column(Float)
+    max_volume_cbm: Mapped[float] = mapped_column(Float)
+
+    __table_args__ = (Index("ix_uld_service", "service_id"),)
+
+
+class Allocation(Base):
+    """The booking bridge: a shipment leg loaded onto a shared service (and ULD).
+    This is where capacity contention, roll-over and MAWB/HAWB consolidation live."""
+
+    __tablename__ = "fact_allocations"
+
+    allocation_id: Mapped[str] = mapped_column(String(30), primary_key=True)  # ALC-000001
+    shipment_id: Mapped[str] = mapped_column(String(30), ForeignKey("dim_shipments.shipment_id"))
+    leg_id: Mapped[str] = mapped_column(String(30), ForeignKey("fact_shipment_legs.leg_id"))
+    service_id: Mapped[str] = mapped_column(String(40), ForeignKey("dim_transport_services.service_id"))
+    uld_id: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    mawb_no: Mapped[str | None] = mapped_column(String(16), nullable=True)  # master AWB per service
+    hawb_no: Mapped[str | None] = mapped_column(String(20), nullable=True)  # house AWB per shipment
+    priority_class: Mapped[str] = mapped_column(String(12))  # PHARMA | PERISHABLE | HIGH_VALUE | DG | GENERAL
+    allocated_weight_kg: Mapped[float] = mapped_column(Float)
+    allocated_volume_cbm: Mapped[float] = mapped_column(Float)
+    allocation_status: Mapped[str] = mapped_column(String(16))  # CONFIRMED | ROLLED | REACCOMMODATED
+    rolled_from_service_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    roll_reason: Mapped[str | None] = mapped_column(String(16), nullable=True)  # CAPACITY|CUTOFF|MCT|DG_LIMIT|DISRUPTION
+    booked_ts: Mapped[str] = mapped_column(String(30))
+    decided_ts: Mapped[str] = mapped_column(String(30))
+
+    __table_args__ = (
+        Index("ix_alloc_leg_service", "leg_id", "service_id", unique=True),
+        Index("ix_alloc_service_status", "service_id", "allocation_status"),
+        Index("ix_alloc_shipment", "shipment_id"),
+    )
+
+
 # ---------------------------------------------------------------- ops clock (V1.0-C)
 
 

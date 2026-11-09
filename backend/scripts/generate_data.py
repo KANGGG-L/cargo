@@ -857,6 +857,300 @@ def generate_disruption_events():
     ]
 
 
+# ================================================================ shared capacity network (P0)
+#
+# Design note (risk R1): everything below uses an INDEPENDENT Random(42) instance
+# (`NET_RNG`) so it never advances the module-level `random` sequence that the
+# legacy generator + 78 pinned assertions depend on. Services are generated first;
+# then existing AIR/SEA/TRUCK legs are matched onto the nearest feasible same-lane
+# service, giving real cross-shipment sharing. `voyage_flight_no` is backfilled from
+# the chosen service_no (D5=A: bridge via fact_allocations, no new column on legs).
+
+NET_SEED = 42
+
+# Per-mode capacity + schedule constants (fictional values calibrated to public
+# industry magnitudes — see docs/NETWORK_UPGRADE_PLAN.md A.4; not measured).
+AIR_LANES = ["LAX", "ORD", "LHR", "FRA", "NRT", "SIN", "SYD"]
+# D2 (revised): the plan's "3 services/day/lane AND 8-15 shipments/service" is
+# arithmetically inconsistent with the real demand of ~1.5 AIR legs/lane/day
+# (7,980 shipments / 549 days / 7 lanes). Over-provisioning services destroys
+# contention (avg load -> 1.4). We instead model ONE daily freighter per lane and
+# size chargeable capacity low enough that normal days run ~55-80% full and a
+# typhoon-cancelled window rolls a large block at once. This keeps the schedule
+# believable (a daily CX freighter per destination) while making sharing real.
+AIR_SERVICES_PER_DAY = 1
+AIR_CAPACITY_KG = 42000.0          # single mid freighter chargeable band; ~1.5 shp/day fills it partly
+AIR_CAPACITY_CBM = 260.0
+AIR_CUTOFF_LEAD_H = 48             # cargo cut-off 48h before departure (24-72h band)
+AIR_MCT_MIN = 120
+SEA_CORRIDORS = {"CNYTN": 45.0, "CNNGB": 1250.0, "CNSHA": 1400.0}
+SEA_SERVICES_PER_DAY = 1
+SEA_CAPACITY_KG = 120000.0
+SEA_CAPACITY_CBM = 650.0
+SEA_CUTOFF_LEAD_H = 12
+SEA_MCT_MIN = 240
+TRUCK_ORIGINS = ["CNCAN", "SZX", "CNYTN"]
+TRUCK_SERVICES_PER_DAY = 2
+TRUCK_CAPACITY_KG = 18000.0
+TRUCK_CAPACITY_CBM = 70.0
+TRUCK_CUTOFF_LEAD_H = 4
+TRUCK_MCT_MIN = 60
+
+AIR_FLIGHT_MIN = {
+    "LAX": 780, "ORD": 840, "LHR": 720, "FRA": 690,
+    "NRT": 240, "SIN": 210, "SYD": 550,
+}
+AIR_DIST = {
+    "LAX": 11650, "ORD": 12480, "LHR": 9620, "FRA": 9160,
+    "NRT": 2900, "SIN": 2560, "SYD": 7390,
+}
+ULD_TYPES = [("PMC", 6800.0, 11.5), ("PAG", 5100.0, 10.2), ("AKE", 1500.0, 4.3)]
+
+PRIORITY_BY_CATEGORY = {
+    "Pharma_Cold_Chain": "PHARMA",
+    "General": "GENERAL",
+    "High_Tech": "HIGH_VALUE",
+    "E_Commerce": "GENERAL",
+    "Dangerous_Goods": "DG",
+}
+# priority ordering for allocation contention (lower number loads first)
+PRIORITY_RANK = {"PHARMA": 0, "PERISHABLE": 1, "DG": 2, "HIGH_VALUE": 3, "GENERAL": 4}
+
+
+def _parse(ts):
+    return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+
+
+def generate_transport_services():
+    """Build the shared service schedule (flights / sailings / truck trips) for the
+    whole 18-month window. Returns (services, index) where index maps
+    (mode, lane_key, date) -> sorted list of service dicts for matching."""
+    rng = random.Random(NET_SEED)
+    services = []
+    index = {}
+
+    def add_service(mode, lane_key, orig, dest, depart, flight_min, cap_kg, cap_cbm,
+                    cutoff_lead_h, mct, carrier, svc_no, idx_within_day):
+        date = depart.date()
+        service_id = f"SVC-{mode}-{orig}-{dest}-{date.strftime('%Y%m%d')}-{idx_within_day:02d}"
+        arrive = depart + timedelta(minutes=flight_min)
+        cutoff = depart - timedelta(hours=cutoff_lead_h)
+        row = {
+            "service_id": service_id,
+            "transport_mode": mode,
+            "carrier_code": carrier,
+            "service_no": svc_no,
+            "origin_facility": orig,
+            "destination_facility": dest,
+            "scheduled_depart_ts": _iso(depart),
+            "scheduled_arrive_ts": _iso(arrive),
+            "cutoff_ts": _iso(cutoff),
+            "mct_minutes": mct,
+            "capacity_chargeable_kg": cap_kg,
+            "capacity_cbm": cap_cbm,
+            "allocated_kg": 0.0,
+            "allocated_cbm": 0.0,
+            "status": "SCHEDULED",
+            "disruption_event_id": "",
+        }
+        services.append(row)
+        index.setdefault((mode, lane_key, date), []).append(row)
+
+    day = START_DATE
+    while day <= END_DATE:
+        d0 = datetime(day.year, day.month, day.day)
+        # AIR: HKG -> each lane, N services/day on a fixed grid + small jitter
+        for dest in AIR_LANES:
+            for k in range(AIR_SERVICES_PER_DAY):
+                base_hour = 2 + k * (20 // AIR_SERVICES_PER_DAY)
+                depart = d0 + timedelta(hours=base_hour, minutes=rng.randint(0, 59))
+                svc_no = f"CX{rng.randint(800, 899)}"
+                add_service("AIR", dest, "HKG", dest, depart, AIR_FLIGHT_MIN[dest],
+                            AIR_CAPACITY_KG, AIR_CAPACITY_CBM, AIR_CUTOFF_LEAD_H,
+                            AIR_MCT_MIN, "CX", svc_no, k + 1)
+        # SEA feeder corridors -> HKG
+        for orig, dist in SEA_CORRIDORS.items():
+            for k in range(SEA_SERVICES_PER_DAY):
+                base_hour = 3 + k * 10
+                depart = d0 + timedelta(hours=base_hour, minutes=rng.randint(0, 59))
+                transit_min = int(dist / 20.0 * 60) if dist > 100 else 240  # ~20km/h barge or fixed feeder
+                svc_no = f"FDR-{rng.randint(100, 999)}"
+                add_service("SEA", orig, orig, "HKG", depart, transit_min,
+                            SEA_CAPACITY_KG, SEA_CAPACITY_CBM, SEA_CUTOFF_LEAD_H,
+                            SEA_MCT_MIN, "Feeder_Line_A", svc_no, k + 1)
+        # TRUCK cross-border -> HKG
+        for orig in TRUCK_ORIGINS:
+            for k in range(TRUCK_SERVICES_PER_DAY):
+                base_hour = 1 + k * 5
+                depart = d0 + timedelta(hours=base_hour, minutes=rng.randint(0, 59))
+                svc_no = f"TRK-{rng.randint(100, 999)}"
+                add_service("TRUCK", orig, orig, "HKG", depart, rng.randint(180, 420),
+                            TRUCK_CAPACITY_KG, TRUCK_CAPACITY_CBM, TRUCK_CUTOFF_LEAD_H,
+                            TRUCK_MCT_MIN, "CrossBorder_Fleet_B", svc_no, k + 1)
+        day += timedelta(days=1)
+
+    for key in index:
+        index[key].sort(key=lambda r: r["scheduled_depart_ts"])
+    print(f"[OK] Generated {len(services)} transport services")
+    return services, index
+
+
+def generate_ulds(services):
+    """2-6 ULDs per AIR service (D1=B). SEA/TRUCK modelled without ULDs."""
+    rng = random.Random(NET_SEED + 1)
+    ulds = []
+    for svc in services:
+        if svc["transport_mode"] != "AIR":
+            continue
+        n = rng.randint(2, 6)
+        for i in range(n):
+            utype, mw, mv = rng.choice(ULD_TYPES)
+            ulds.append({
+                "uld_id": f"{utype}-{svc['service_id'][4:]}-{i + 1:02d}",
+                "service_id": svc["service_id"],
+                "uld_type": utype,
+                "max_weight_kg": mw,
+                "max_volume_cbm": mv,
+            })
+    print(f"[OK] Generated {len(ulds)} ULDs")
+    return ulds
+
+
+def assign_allocations(shipments, legs, services, index, disruption_events):
+    """Match every AIR/SEA/TRUCK leg onto the earliest feasible shared service with
+    remaining capacity; roll over when full or cut-off/MCT missed. Backfills
+    voyage_flight_no on the legs in-place. Returns allocations list."""
+    rng = random.Random(NET_SEED + 2)
+    ship_by_id = {s["shipment_id"]: s for s in shipments}
+    svc_by_id = {s["service_id"]: s for s in services}
+
+    # typhoon window HKG AIR services -> CANCELLED (drives the >=20-shipment cascade)
+    typhoon = next(e for e in disruption_events if e["event_code"].startswith("TYPHOON"))
+    t_start, t_end = _parse(typhoon["start_timestamp"]), _parse(typhoon["end_timestamp"])
+    for svc in services:
+        if (svc["transport_mode"] == "AIR" and svc["origin_facility"] == "HKG"
+                and t_start <= _parse(svc["scheduled_depart_ts"]) <= t_end):
+            svc["status"] = "CANCELLED"
+            svc["disruption_event_id"] = typhoon["event_id"]
+
+    def lane_key(leg):
+        mode = leg["transport_mode"]
+        if mode == "AIR":
+            return leg["destination_facility"]
+        return leg["origin_facility"]
+
+    # order legs by priority then booking so high-priority late bookings can bump GENERAL
+    def leg_sort_key(leg):
+        ship = ship_by_id[leg["shipment_id"]]
+        pc = PRIORITY_BY_CATEGORY.get(ship["cargo_category"], "GENERAL")
+        return (PRIORITY_RANK[pc], ship["booking_ts"])
+
+    allocations = []
+    alloc_counter = 1
+    mawb_by_service = {}
+    rolled_cascade = 0
+
+    # final delivery legs (DEST -> DEST_METRO) are last-mile, not shared network capacity
+    network_legs = [l for l in legs if not l["destination_facility"].endswith("_METRO")]
+    network_legs.sort(key=leg_sort_key)
+
+    for leg in network_legs:
+        ship = ship_by_id[leg["shipment_id"]]
+        pc = PRIORITY_BY_CATEGORY.get(ship["cargo_category"], "GENERAL")
+        w = ship["total_chargeable_weight_kg"]
+        v = ship["total_volume_cbm"]
+        booked = _parse(ship["booking_ts"])
+        earliest = _parse(leg["planned_depart_ts"]) - timedelta(hours=6)
+
+        # all same-lane services near the planned departure, cancelled or not,
+        # ordered by departure — used both to find the natural (pre-disruption)
+        # service and to roll forward.
+        mode = leg["transport_mode"]
+        lk = lane_key(leg)
+        pdep = _parse(leg["planned_depart_ts"])
+        pool = []
+        for dd in range(-1, 7):
+            pool.extend(index.get((mode, lk, (pdep + timedelta(days=dd)).date()), []))
+        pool.sort(key=lambda r: r["scheduled_depart_ts"])
+        feasible = [s for s in pool
+                    if _parse(s["scheduled_depart_ts"]) >= earliest
+                    and booked <= _parse(s["cutoff_ts"])]
+
+        # natural service = earliest feasible regardless of cancellation
+        natural = feasible[0] if feasible else None
+        rolled_from = None
+        roll_reason = None
+        status = "CONFIRMED"
+
+        if natural is not None and natural["status"] == "CANCELLED":
+            rolled_from = natural["service_id"]
+            roll_reason = "DISRUPTION"
+            status = "ROLLED"
+
+        # choose the earliest feasible, non-cancelled service WITH remaining room
+        chosen = None
+        for svc in feasible:
+            if svc["status"] == "CANCELLED":
+                continue
+            if (svc["allocated_kg"] + w <= svc["capacity_chargeable_kg"]
+                    and svc["allocated_cbm"] + v <= svc["capacity_cbm"]):
+                chosen = svc
+                break
+            else:
+                if rolled_from is None:
+                    rolled_from = svc["service_id"]
+                    roll_reason = "CAPACITY"
+                if status == "CONFIRMED":
+                    status = "REACCOMMODATED"
+
+        if chosen is None:
+            # no feasible service with room; leave leg on its generated number
+            continue
+        if status == "CONFIRMED" and rolled_from is not None:
+            # chose a later service than the natural one due to capacity/cancel
+            status = "REACCOMMODATED" if roll_reason == "CAPACITY" else "ROLLED"
+
+        chosen["allocated_kg"] += w
+        chosen["allocated_cbm"] += v
+        # MAWB per service, HAWB per shipment
+        mawb = mawb_by_service.get(chosen["service_id"])
+        if mawb is None and chosen["transport_mode"] == "AIR":
+            mawb = f"160-{10000000 + len(mawb_by_service)}"[:11]
+            mawb_by_service[chosen["service_id"]] = mawb
+        hawb = f"HAWB-{ship['shipment_id'][-6:]}" if chosen["transport_mode"] == "AIR" else None
+        if roll_reason == "DISRUPTION":
+            rolled_cascade += 1
+
+        allocations.append({
+            "allocation_id": f"ALC-{alloc_counter:06d}",
+            "shipment_id": ship["shipment_id"],
+            "leg_id": leg["leg_id"],
+            "service_id": chosen["service_id"],
+            "uld_id": "",
+            "mawb_no": mawb or "",
+            "hawb_no": hawb or "",
+            "priority_class": pc,
+            "allocated_weight_kg": w,
+            "allocated_volume_cbm": v,
+            "allocation_status": status,
+            "rolled_from_service_id": rolled_from or "",
+            "roll_reason": roll_reason or "",
+            "booked_ts": ship["booking_ts"],
+            "decided_ts": _iso(booked + timedelta(hours=rng.uniform(1, 8))),
+        })
+        alloc_counter += 1
+        # backfill the display number on the leg so legs/services agree
+        leg["voyage_flight_no"] = chosen["service_no"]
+
+    # round rollup columns
+    for svc in services:
+        svc["allocated_kg"] = round(svc["allocated_kg"], 1)
+        svc["allocated_cbm"] = round(svc["allocated_cbm"], 2)
+    print(f"[OK] Generated {len(allocations)} allocations "
+          f"({rolled_cascade} rolled by disruption cascade)")
+    return allocations
+
+
 def save_csv(filename, fieldnames, rows):
     path = SYNTHETIC_DIR / filename
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -905,29 +1199,6 @@ def main():
             "status",
         ],
         shipments,
-    )
-
-    save_csv(
-        "fact_shipment_legs.csv",
-        [
-            "leg_id",
-            "shipment_id",
-            "leg_sequence",
-            "transport_mode",
-            "origin_facility",
-            "destination_facility",
-            "carrier_code",
-            "voyage_flight_no",
-            "planned_depart_ts",
-            "actual_depart_ts",
-            "planned_arrive_ts",
-            "actual_arrive_ts",
-            "delay_minutes",
-            "distance_km",
-            "allocated_cost_usd",
-            "leg_status",
-        ],
-        legs,
     )
 
     air_kpis = generate_air_kpis()
@@ -1058,6 +1329,50 @@ def main():
             "target_metric_impact",
         ],
         events,
+    )
+
+    # ---- shared capacity network (P0): services -> ULDs -> allocations ----
+    services, svc_index = generate_transport_services()
+    ulds = generate_ulds(services)
+    allocations = assign_allocations(shipments, legs, services, svc_index, events)
+
+    # legs' voyage_flight_no was backfilled in-place by assign_allocations; rewrite
+    save_csv(
+        "fact_shipment_legs.csv",
+        [
+            "leg_id", "shipment_id", "leg_sequence", "transport_mode",
+            "origin_facility", "destination_facility", "carrier_code",
+            "voyage_flight_no", "planned_depart_ts", "actual_depart_ts",
+            "planned_arrive_ts", "actual_arrive_ts", "delay_minutes",
+            "distance_km", "allocated_cost_usd", "leg_status",
+        ],
+        legs,
+    )
+    save_csv(
+        "dim_transport_services.csv",
+        [
+            "service_id", "transport_mode", "carrier_code", "service_no",
+            "origin_facility", "destination_facility", "scheduled_depart_ts",
+            "scheduled_arrive_ts", "cutoff_ts", "mct_minutes",
+            "capacity_chargeable_kg", "capacity_cbm", "allocated_kg",
+            "allocated_cbm", "status", "disruption_event_id",
+        ],
+        services,
+    )
+    save_csv(
+        "dim_ulds.csv",
+        ["uld_id", "service_id", "uld_type", "max_weight_kg", "max_volume_cbm"],
+        ulds,
+    )
+    save_csv(
+        "fact_allocations.csv",
+        [
+            "allocation_id", "shipment_id", "leg_id", "service_id", "uld_id",
+            "mawb_no", "hawb_no", "priority_class", "allocated_weight_kg",
+            "allocated_volume_cbm", "allocation_status", "rolled_from_service_id",
+            "roll_reason", "booked_ts", "decided_ts",
+        ],
+        allocations,
     )
 
     print("[OK] Synthetic operational data generation complete.")

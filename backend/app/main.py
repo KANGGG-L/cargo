@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings, is_mock_mode
-from app.routers import alerts, analytics, chat, documents, ingest, notifications, ops, orders, portal, settlement, shipments
+from app.routers import alerts, analytics, chat, documents, ingest, network, notifications, ops, orders, portal, settlement, shipments
 
 settings = get_settings()
 
@@ -46,6 +46,7 @@ async def access_log(request, call_next):
 app.include_router(analytics.router)
 app.include_router(chat.router)
 app.include_router(shipments.router)
+app.include_router(network.router)
 app.include_router(alerts.router)
 app.include_router(ingest.router)
 app.include_router(notifications.router)

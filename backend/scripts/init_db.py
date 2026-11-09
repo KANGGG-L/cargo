@@ -71,6 +71,10 @@ def init_database():
         ("dim_customers", SYNTHETIC_DIR / "dim_customers.csv"),
         ("dim_shipments", SYNTHETIC_DIR / "dim_shipments.csv"),
         ("fact_shipment_legs", SYNTHETIC_DIR / "fact_shipment_legs.csv"),
+        # shared capacity network (P0) — services, then ULDs, then allocation bridge
+        ("dim_transport_services", SYNTHETIC_DIR / "dim_transport_services.csv"),
+        ("dim_ulds", SYNTHETIC_DIR / "dim_ulds.csv"),
+        ("fact_allocations", SYNTHETIC_DIR / "fact_allocations.csv"),
         ("fact_air_kpi_daily", SYNTHETIC_DIR / "fact_air_kpi_daily.csv"),
         ("fact_ocean_rate_weekly", SYNTHETIC_DIR / "fact_ocean_rate_weekly.csv"),
         ("fact_sea_kpi_weekly", SYNTHETIC_DIR / "fact_sea_kpi_weekly.csv"),

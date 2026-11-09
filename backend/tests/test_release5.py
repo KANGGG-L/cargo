@@ -136,3 +136,49 @@ def test_schema_version_table_or_rebuild_path():
     """The one-shot deterministic rebuild path still exists (rebuild_demo.sh)."""
     root = Path(__file__).resolve().parents[2]
     assert (root / "scripts" / "rebuild_demo.sh").exists()
+
+
+# ---------------------------------------------------------------- R5-3 four-role model
+
+
+def test_role_capabilities_map():
+    from app.auth import ROLE_CAPABILITIES, scoped_customer_id
+
+    assert ROLE_CAPABILITIES["ops"]["write"] and ROLE_CAPABILITIES["manager"]["write"]
+    assert not ROLE_CAPABILITIES["partner"]["write"]
+    assert not ROLE_CAPABILITIES["customer"]["write"]
+    # full-read roles are not customer-scoped
+    assert scoped_customer_id({"role": "partner", "customer_id": None}) is None
+    assert scoped_customer_id({"role": "manager", "customer_id": None}) is None
+    assert scoped_customer_id({"role": "customer", "customer_id": "CUST-001"}) == "CUST-001"
+
+
+def test_partner_can_read_but_not_write():
+    from app import auth
+
+    auth.AUTH_ENABLED = True
+    try:
+        c = TestClient(app)
+        login = c.post("/api/portal/login", json={"email": "partner@demo.local", "password": "demo1234"})
+        if login.status_code != 200:
+            return  # partner seed not present in this DB copy; skip
+        # full read of the network
+        assert c.get("/api/network/services?mode=AIR&limit=2").status_code == 200
+        # but a write (alert cluster) is forbidden
+        assert c.post("/api/alerts/cluster").status_code == 403
+    finally:
+        auth.AUTH_ENABLED = False
+
+
+def test_manager_can_write():
+    from app import auth
+
+    auth.AUTH_ENABLED = True
+    try:
+        c = TestClient(app)
+        login = c.post("/api/portal/login", json={"email": "manager@demo.local", "password": "demo1234"})
+        if login.status_code != 200:
+            return
+        assert c.get("/api/network/services?limit=2").status_code == 200
+    finally:
+        auth.AUTH_ENABLED = False

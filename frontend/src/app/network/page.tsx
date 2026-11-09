@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Bell, Plane, Ship, Truck, type LucideIcon } from "lucide-react";
+import { Bell, Plane, Search, Ship, Truck, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import { api } from "@/lib/api";
@@ -49,6 +49,7 @@ function fmtTs(ts: string): string {
 export default function NetworkPage() {
   const [chain, setChain] = useState("ALL");
   const [status, setStatus] = useState("");
+  const [query, setQuery] = useState("");
   const [shipments, setShipments] = useState<ShipmentListItem[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [trace, setTrace] = useState<TracePayload | null>(null);
@@ -60,36 +61,83 @@ export default function NetworkPage() {
   const [subOpen, setSubOpen] = useState(false);
   const [subMsg, setSubMsg] = useState<string | null>(null);
 
+  const filtered = useMemo(() => {
+    if (!shipments) return null;
+    const q = query.trim().toLowerCase();
+    if (!q) return shipments;
+    return shipments.filter(
+      (s) =>
+        s.shipment_id.toLowerCase().includes(q) ||
+        s.customer_name.toLowerCase().includes(q) ||
+        s.origin_location.toLowerCase().includes(q) ||
+        s.destination_location.toLowerCase().includes(q)
+    );
+  }, [shipments, query]);
+
+  // selection derived from the filtered set (falls back to the first match) —
+  // no effect needed, so filter changes never select an invisible row
+  const activeId =
+    filtered && filtered.length > 0
+      ? filtered.some((s) => s.shipment_id === selectedId)
+        ? selectedId
+        : filtered[0].shipment_id
+      : null;
+
   async function subscribe() {
-    if (!selectedId) return;
+    if (!activeId) return;
     try {
-      await api.subscribe(subEmail, selectedId);
-      setSubMsg(`Subscribed ${subEmail} to ${selectedId} milestones & delay alerts`);
+      await api.subscribe(subEmail, activeId);
+      setSubMsg(`Subscribed ${subEmail} to ${activeId} milestones & delay alerts`);
       setSubOpen(false);
       setSubEmail("");
     } catch (e) {
-      setSubMsg(String(e));
+      const raw = e instanceof Error ? e.message : String(e);
+      setSubMsg(raw.startsWith("Error: ") ? raw.slice(7) : raw);
     }
   }
 
+  // restore view state from the URL once (shareable links, refresh survival)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const c = p.get("chain");
+    const s = p.get("status");
+    const q = p.get("q");
+    const sid = p.get("sid");
+    const id = requestAnimationFrame(() => {
+      if (c && CHAINS.includes(c)) setChain(c);
+      if (s && STATUSES.includes(s)) setStatus(s);
+      if (q) setQuery(q);
+      if (sid) setSelectedId(sid);
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // keep the URL in sync so filters/search/selection survive a reload
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (chain !== "ALL") p.set("chain", chain);
+    if (status) p.set("status", status);
+    if (query) p.set("q", query);
+    if (activeId) p.set("sid", activeId);
+    const qs = p.toString();
+    window.history.replaceState(null, "", qs ? `?${qs}` : window.location.pathname);
+  }, [chain, status, query, activeId]);
+
   useEffect(() => {
     api.shipments(chain === "ALL" ? undefined : chain, status || undefined)
-      .then((rows) => {
-        setShipments(rows);
-        if (rows.length > 0) setSelectedId((cur) => cur ?? rows[0].shipment_id);
-      })
+      .then((rows) => setShipments(rows))
       .catch(() => setShipments([]));
   }, [chain, status]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!activeId) return;
     setTrace(null);
     setMilestones(null);
     setTracks(null);
-    api.trace(selectedId).then(setTrace).catch(() => setTrace(null));
-    api.milestones(selectedId).then((r) => setMilestones(r.milestones)).catch(() => setMilestones(null));
-    api.tracks(selectedId).then((r) => setTracks(r.tracks)).catch(() => setTracks(null));
-  }, [selectedId]);
+    api.trace(activeId).then(setTrace).catch(() => setTrace(null));
+    api.milestones(activeId).then((r) => setMilestones(r.milestones)).catch(() => setMilestones(null));
+    api.tracks(activeId).then((r) => setTracks(r.tracks)).catch(() => setTracks(null));
+  }, [activeId]);
 
   useEffect(() => {
     api.sankey().then(setSankey).catch(() => {});
@@ -121,12 +169,45 @@ export default function NetworkPage() {
                     : "#22d3ee",
             },
           })),
-          links: sankey.links.map((l) => ({ ...l })),
+          links: sankey.links.map((l) => {
+            // two-tone demand-vs-capacity: green when there's slack, amber as it
+            // fills, rose when demand is at/over available capacity
+            const u = l.utilization_pct;
+            const color =
+              u == null ? "#94a3b8" : u >= 90 ? "#f43f5e" : u >= 70 ? "#f59e0b" : "#34d399";
+            return {
+              source: l.source,
+              target: l.target,
+              value: l.value,
+              lineStyle: { color, opacity: 0.4 },
+              demand: l.demand_tonnes,
+              capacity: l.capacity_tonnes,
+              headroom: l.headroom_tonnes,
+              util: u,
+            };
+          }),
           label: { color: "#8b9bb4", fontSize: 10 },
-          lineStyle: { color: "gradient", opacity: 0.25, curveness: 0.5 },
+          lineStyle: { color: "source", opacity: 0.25, curveness: 0.5 },
         },
       ],
-      tooltip: { trigger: "item" },
+      tooltip: {
+        trigger: "item",
+        formatter: (p: unknown) => {
+          const d = p as { dataType?: string; data?: Record<string, unknown>; name?: string };
+          if (d.dataType === "edge" && d.data) {
+            const cap = d.data.capacity as number | null;
+            const util = d.data.util as number | null;
+            return (
+              `${d.data.source} → ${d.data.target}<br/>` +
+              `Demand: <b>${d.data.demand} t</b><br/>` +
+              (cap != null
+                ? `Capacity: ${cap} t<br/>Headroom: ${d.data.headroom} t<br/>Utilisation: <b>${util}%</b>`
+                : `(last-mile / no shared-service capacity)`)
+            );
+          }
+          return d.name ?? "";
+        },
+      },
     };
   }, [sankey]);
 
@@ -166,20 +247,32 @@ export default function NetworkPage() {
                 </button>
               ))}
             </div>
+            <div className="relative mt-2">
+              <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search ID, customer, route…"
+                aria-label="Search shipments"
+                className="w-full rounded-md border border-zinc-300 bg-white py-1.5 pl-7 pr-2 text-xs text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none"
+              />
+            </div>
           </div>
           <div className="max-h-[420px] overflow-y-auto">
-            {shipments === null && (
+            {filtered === null && (
               <div className="p-4 text-xs text-zinc-500">Loading shipments…</div>
             )}
-            {shipments?.length === 0 && (
-              <div className="p-4 text-xs text-zinc-500">No shipments match.</div>
+            {filtered?.length === 0 && (
+              <div className="p-4 text-xs text-zinc-500">
+                No shipments match your filters.
+              </div>
             )}
-            {shipments?.map((s) => (
+            {filtered?.map((s) => (
               <button
                 key={s.shipment_id}
                 onClick={() => setSelectedId(s.shipment_id)}
                 className={`block w-full border-b border-zinc-200 px-3 py-2.5 text-left transition-colors hover:bg-zinc-100 ${
-                  selectedId === s.shipment_id ? "bg-zinc-100" : ""
+                  activeId === s.shipment_id ? "bg-zinc-100" : ""
                 }`}
               >
                 <div className="flex items-center justify-between text-xs">
@@ -205,7 +298,7 @@ export default function NetworkPage() {
           {trace && (
             <>
               <div className="mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <h3 className="font-mono text-sm font-bold text-white">{trace.shipment.shipment_id}</h3>
+                <h3 className="font-mono text-sm font-bold text-zinc-900">{trace.shipment.shipment_id}</h3>
                 <span className="text-xs text-zinc-500">{trace.shipment.customer_name} · {trace.shipment.region}</span>
                 <span className={`rounded border px-1.5 py-0.5 text-[10px] ${STATUS_STYLE[trace.shipment.status] ?? ""}`}>
                   {trace.shipment.status}
@@ -223,11 +316,12 @@ export default function NetworkPage() {
                 </button>
               </div>
               {subOpen && (
-                <div className="mb-3 flex items-center gap-2 rounded-lg border border-zinc-200 bg-black/20 p-2">
+                <div className="mb-3 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2">
                   <input
                     value={subEmail}
                     onChange={(e) => setSubEmail(e.target.value)}
                     placeholder="ops@customer.com"
+                    aria-label="Subscriber email"
                     className="flex-1 rounded border border-zinc-300 bg-white px-2 py-1 text-xs text-zinc-900 focus:border-zinc-400 focus:outline-none"
                   />
                   <button

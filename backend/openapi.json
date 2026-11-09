@@ -2332,7 +2332,7 @@
     },
     "/api/shipments/flows/sankey": {
       "get": {
-        "description": "Aggregated origin\u2192destination leg volumes for the modal-flow diagram.",
+        "description": "Modal-flow diagram as a demand-vs-capacity two-tone sankey (\u00a75.3.3).\n\nEach origin\u2192destination link carries both the demand tonnage that actually\nmoved (allocated chargeable weight) and the capacity tonnage the shared\nservices on that lane offered, so the UI can render demand against available\nslot. `value` stays = demand tonnes for backward compatibility; leg_count is\nkept for lanes with no service/allocation coverage (e.g. last-mile METRO).",
         "operationId": "sankey_flows_api_shipments_flows_sankey_get",
         "parameters": [
           {

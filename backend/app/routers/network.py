@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.auth import require_ops, require_session
+from app.auth import require_full_read, require_session
 from app.db import get_db
 
 router = APIRouter(
@@ -33,7 +33,7 @@ def list_services(
     db: Session = Depends(get_db),
 ):
     """Service list with live capacity water-line (allocated vs capacity)."""
-    require_ops(request)
+    require_full_read(request)
     order_by = (
         "load_factor DESC" if sort == "load"
         else "scheduled_depart_ts"
@@ -71,7 +71,7 @@ def list_services(
 @router.get("/services/{service_id}")
 def service_detail(service_id: str, request: Request, db: Session = Depends(get_db)):
     """Service header + loaded shipment count + priority-class breakdown."""
-    require_ops(request)
+    require_full_read(request)
     svc = db.execute(
         text("SELECT * FROM dim_transport_services WHERE service_id = :sid"),
         {"sid": service_id},
@@ -108,7 +108,7 @@ def service_detail(service_id: str, request: Request, db: Session = Depends(get_
 @router.get("/services/{service_id}/manifest")
 def service_manifest(service_id: str, request: Request, db: Session = Depends(get_db)):
     """MAWB/HAWB manifest and ULD occupancy for a service (doc-centre narrative)."""
-    require_ops(request)
+    require_full_read(request)
     exists = db.execute(
         text("SELECT 1 FROM dim_transport_services WHERE service_id = :sid"),
         {"sid": service_id},
@@ -153,7 +153,7 @@ def capacity_timeseries(
     db: Session = Depends(get_db),
 ):
     """Daily capacity water-line and rolled-cargo series (P1 DES fills richer fields)."""
-    require_ops(request)
+    require_full_read(request)
     util = db.execute(
         text(
             """
@@ -193,7 +193,7 @@ def capacity_timeseries(
 def data_quality(request: Request, db: Session = Depends(get_db)):
     """Data-quality SLA panel (R4-4): coverage, freshness, reject rate, trust mix.
     Every figure is a re-computable SQL aggregate."""
-    require_ops(request)
+    require_full_read(request)
     dq = db.execute(text("SELECT * FROM v_data_quality")).mappings().one_or_none()
     trust = db.execute(text("SELECT * FROM v_source_trust ORDER BY source")).mappings().all()
     return {"quality": dict(dq) if dq else {}, "source_trust": [dict(r) for r in trust]}

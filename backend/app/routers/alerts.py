@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.auth import require_ops, require_session
+from app.auth import require_session, require_write
 from app.config import get_settings
 from app.milestones.rules import sync
 
@@ -36,7 +36,7 @@ def _now() -> str:
 
 @router.post("/sync")
 def sync_alerts(request: Request):
-    require_ops(request)
+    require_write(request)
     conn = _ro()
     try:
         result = sync(conn)
@@ -52,7 +52,7 @@ def sync_alerts(request: Request):
 @router.post("/cluster")
 def cluster_alerts(request: Request):
     """Group OPEN shipment alerts by shared service into SERVICE-scope parents."""
-    require_ops(request)
+    require_write(request)
     path = get_settings().db_path
     conn = sqlite3.connect(f"file:{path}")
     try:
@@ -160,7 +160,7 @@ class TransitionRequest(BaseModel):
 
 @router.post("/{alert_id}/transition")
 def transition_alert(alert_id: str, req: TransitionRequest, request: Request):
-    require_ops(request)
+    require_write(request)
     path = get_settings().db_path
     conn = sqlite3.connect(f"file:{path}")
     try:
@@ -204,7 +204,7 @@ class BulkTransitionRequest(BaseModel):
 @router.post("/{alert_id}/bulk-transition")
 def bulk_transition(alert_id: str, req: BulkTransitionRequest, request: Request):
     """Transition a SERVICE-scope parent and every child alert in one action."""
-    require_ops(request)
+    require_write(request)
     path = get_settings().db_path
     conn = sqlite3.connect(f"file:{path}")
     try:

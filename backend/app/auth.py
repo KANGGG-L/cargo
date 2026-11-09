@@ -32,6 +32,11 @@ def _token(email: str, password_hash: str) -> str:
     ).hexdigest()
 
 
+def _public_user(user: dict[str, Any]) -> dict[str, Any]:
+    """Strip credential material before a user dict crosses the API boundary."""
+    return {k: v for k, v in user.items() if k != "password_hash"}
+
+
 def verify_login(email: str, password: str) -> dict[str, Any] | None:
     conn = _conn()
     try:
@@ -45,10 +50,22 @@ def verify_login(email: str, password: str) -> dict[str, Any] | None:
         user["password_hash"], hashlib.sha256(password.encode()).hexdigest()
     ):
         return None
-    return dict(user)
+    return _public_user(dict(user))
 
 
 def token_for(user: dict[str, Any]) -> str:
+    """Session token for a user dict; accepts raw rows and sanitized dicts alike."""
+    if "password_hash" not in user:
+        conn = _conn()
+        try:
+            row = conn.execute(
+                "SELECT password_hash FROM dim_users WHERE email = ?", (user["email"],)
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            raise ValueError(f"unknown user {user['email']}")
+        user = {**user, "password_hash": row[0]}
     return _token(user["email"], user["password_hash"])
 
 
@@ -59,7 +76,7 @@ def _resolve_token(token: str) -> dict[str, Any] | None:
             "SELECT email, password_hash, role, customer_id FROM dim_users"
         ).fetchall():
             if hmac.compare_digest(_token(user["email"], user["password_hash"]), token):
-                return dict(user)
+                return _public_user(dict(user))
     finally:
         conn.close()
     return None
@@ -77,13 +94,56 @@ def require_session(request: Request) -> dict[str, Any]:
         # still resolve their true identity (branch above)
         return {"email": "anonymous", "role": "ops", "customer_id": None}
     raise HTTPException(status_code=401, detail="not logged in")
-    conn = _conn()
-    try:
-        for user in conn.execute(
-            "SELECT email, password_hash, role, customer_id FROM dim_users"
-        ).fetchall():
-            if hmac.compare_digest(_token(user["email"], user["password_hash"]), token):
-                return dict(user)
-    finally:
-        conn.close()
-    raise HTTPException(status_code=401, detail="invalid session")
+
+
+def require_ops(request: Request) -> dict[str, Any]:
+    """Workbench write endpoints are operator-only; customers are read-only."""
+    user = require_session(request)
+    if user.get("role") != "ops":
+        raise HTTPException(status_code=403, detail="ops role required")
+    return user
+
+
+# R5-3 four-role capability model (minimal necessary). ops/manager may write;
+# partner is a connected external party with full-network READ but no writes;
+# customer is row-level scoped. This is a demo authz layer, not a real IdP.
+ROLE_CAPABILITIES: dict[str, dict[str, bool]] = {
+    "ops":      {"write": True,  "full_read": True},
+    "manager":  {"write": True,  "full_read": True},
+    "partner":  {"write": False, "full_read": True},
+    "customer": {"write": False, "full_read": False},
+}
+
+
+def require_write(request: Request) -> dict[str, Any]:
+    """Write endpoints: ops or manager. partner/customer are read-only."""
+    user = require_session(request)
+    if not ROLE_CAPABILITIES.get(user.get("role", ""), {}).get("write"):
+        raise HTTPException(status_code=403, detail="write role required (ops/manager)")
+    return user
+
+
+def require_full_read(request: Request) -> dict[str, Any]:
+    """Full-network read endpoints: ops/manager/partner (not row-scoped customer)."""
+    user = require_session(request)
+    if not ROLE_CAPABILITIES.get(user.get("role", ""), {}).get("full_read"):
+        raise HTTPException(status_code=403, detail="full-network read role required")
+    return user
+
+
+def scoped_customer_id(user: dict[str, Any]) -> str | None:
+    """Return the customer_id a query must be filtered by, or None for full-read
+    roles (ops/manager/partner)."""
+    if ROLE_CAPABILITIES.get(user.get("role", ""), {}).get("full_read"):
+        return None
+    return user.get("customer_id")
+
+
+def require_shipment_access(request: Request, shipment_customer_id: str | None) -> dict[str, Any]:
+    """Customer sessions may only touch shipments they own; ops/manager/partner
+    see the whole network (full_read)."""
+    user = require_session(request)
+    if not ROLE_CAPABILITIES.get(user.get("role", ""), {}).get("full_read"):
+        if shipment_customer_id != user.get("customer_id"):
+            raise HTTPException(status_code=403, detail="shipment outside customer scope")
+    return user

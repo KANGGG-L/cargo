@@ -184,7 +184,16 @@ export interface TracePayload {
 
 export interface SankeyPayload {
   nodes: { name: string }[];
-  links: { source: string; target: string; value: number }[];
+  links: {
+    source: string;
+    target: string;
+    value: number;
+    demand_tonnes: number;
+    capacity_tonnes: number | null;
+    headroom_tonnes: number | null;
+    utilization_pct: number | null;
+    leg_count: number;
+  }[];
 }
 
 export interface AlertItem {

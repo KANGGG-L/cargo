@@ -165,23 +165,66 @@ def shipment_trace(shipment_id: str, request: Request, db: Session = Depends(get
 
 @router.get("/flows/sankey")
 def sankey_flows(request: Request, min_legs: int = Query(20, ge=1), db: Session = Depends(get_db)):
-    """Aggregated origin→destination leg volumes for the modal-flow diagram."""
+    """Modal-flow diagram as a demand-vs-capacity two-tone sankey (§5.3.3).
+
+    Each origin→destination link carries both the demand tonnage that actually
+    moved (allocated chargeable weight) and the capacity tonnage the shared
+    services on that lane offered, so the UI can render demand against available
+    slot. `value` stays = demand tonnes for backward compatibility; leg_count is
+    kept for lanes with no service/allocation coverage (e.g. last-mile METRO)."""
     require_ops(request)
-    rows = db.execute(
+    # demand + capacity per lane from the shared-service network
+    svc_rows = db.execute(
+        text(
+            """
+            SELECT s.origin_facility AS source, s.destination_facility AS target,
+                   ROUND(SUM(s.allocated_kg) / 1000.0, 1) AS demand_tonnes,
+                   ROUND(SUM(s.capacity_chargeable_kg) / 1000.0, 1) AS capacity_tonnes,
+                   COUNT(*) AS services
+            FROM dim_transport_services s
+            GROUP BY s.origin_facility, s.destination_facility
+            HAVING SUM(s.allocated_kg) > 0
+            """
+        )
+    ).mappings().all()
+    svc_by_lane = {(r["source"], r["target"]): dict(r) for r in svc_rows}
+
+    # leg-count lanes (covers last-mile + any lane without a service row)
+    leg_rows = db.execute(
         text(
             """
             SELECT origin_facility AS source, destination_facility AS target,
-                   COUNT(*) AS value
-            FROM fact_shipment_legs
+                   COUNT(*) AS leg_count,
+                   ROUND(SUM(s.total_chargeable_weight_kg) / 1000.0, 1) AS leg_tonnes
+            FROM fact_shipment_legs l
+            JOIN dim_shipments s ON s.shipment_id = l.shipment_id
             GROUP BY origin_facility, destination_facility
             HAVING COUNT(*) >= :min_legs
-            ORDER BY value DESC
+            ORDER BY leg_count DESC
             """
         ),
         {"min_legs": min_legs},
     ).mappings().all()
 
-    links = [dict(r) for r in rows]
+    links = []
+    for r in leg_rows:
+        lane = (r["source"], r["target"])
+        svc = svc_by_lane.get(lane)
+        demand = svc["demand_tonnes"] if svc else r["leg_tonnes"]
+        capacity = svc["capacity_tonnes"] if svc else None
+        headroom = round(capacity - demand, 1) if capacity is not None else None
+        util_pct = round(100.0 * demand / capacity, 1) if capacity else None
+        links.append({
+            "source": r["source"],
+            "target": r["target"],
+            "value": demand,                 # backward-compatible: demand tonnes
+            "demand_tonnes": demand,
+            "capacity_tonnes": capacity,
+            "headroom_tonnes": headroom,
+            "utilization_pct": util_pct,
+            "leg_count": r["leg_count"],
+        })
+
     nodes = []
     seen = set()
     for l in links:

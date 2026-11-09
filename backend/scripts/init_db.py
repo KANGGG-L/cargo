@@ -170,7 +170,22 @@ def seed_users_and_defaults():
             ),
             {"h": h, "now": now},
         )
-    print("[OK] Seeded portal demo users (ops@demo.local / acme@demo.local, pwd demo1234)")
+        # R5-3 extended roles: manager (write), partner (full read, no write)
+        conn.execute(
+            text(
+                "INSERT OR IGNORE INTO dim_users (email, password_hash, role, customer_id, created_ts)"
+                " VALUES ('manager@demo.local', :h, 'manager', NULL, :now)"
+            ),
+            {"h": h, "now": now},
+        )
+        conn.execute(
+            text(
+                "INSERT OR IGNORE INTO dim_users (email, password_hash, role, customer_id, created_ts)"
+                " VALUES ('partner@demo.local', :h, 'partner', NULL, :now)"
+            ),
+            {"h": h, "now": now},
+        )
+    print("[OK] Seeded portal demo users (ops/manager/partner/customer, pwd demo1234)")
 
 
 if __name__ == "__main__":

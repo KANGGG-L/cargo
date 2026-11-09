@@ -140,3 +140,22 @@ def test_mock_plan_network_scenario():
     assert plan is not None
     assert plan["id"] == "network_capacity"
     assert plan["steps"][0]["tool"] == "capacity_impact"
+
+
+def test_sankey_demand_vs_capacity():
+    """§5.3.3 two-tone flow: links carry demand + capacity + utilisation, and a
+    shared-service lane reports capacity headroom."""
+    c = _client()
+    r = c.get("/api/shipments/flows/sankey", params={"min_legs": 100})
+    assert r.status_code == 200
+    links = r.json()["links"]
+    assert links
+    for l in links:
+        assert "demand_tonnes" in l and "capacity_tonnes" in l and "utilization_pct" in l
+        assert l["value"] == l["demand_tonnes"]  # backward-compatible
+    # at least one lane is backed by shared-service capacity with a real util%
+    covered = [l for l in links if l["capacity_tonnes"]]
+    assert covered, "no lane reported shared-service capacity"
+    for l in covered:
+        assert 0 <= l["utilization_pct"] <= 100.0
+        assert abs(l["headroom_tonnes"] - (l["capacity_tonnes"] - l["demand_tonnes"])) < 0.2

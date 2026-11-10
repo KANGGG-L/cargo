@@ -110,7 +110,7 @@ def tick() -> dict[str, Any]:
     try:
         state = get_state_from(conn)
         if not state["running"]:
-            return {"advanced_s": 0, "emitted": 0, "sim_now": state["sim_now"]}
+            return {"advanced_s": 0, "emitted": 0, "escalated": 0, "sim_now": state["sim_now"]}
 
         prev = datetime.strptime(state["sim_now"][:19], "%Y-%m-%dT%H:%M:%S")
         now = prev + timedelta(seconds=state["speed"] * _TICK_INTERVAL_S)
@@ -146,19 +146,35 @@ def tick() -> dict[str, Any]:
     finally:
         conn.close()
 
-    # rule engine + notification fan-out on the new event state
+    # rule engine + escalation + notification fan-out on the new event state
+    escalated = 0
     if emitted:
-        from app.milestones.rules import sync
+        from app.milestones.rules import escalate, sync
         from app.notifications.outbox import enqueue_for_alerts
 
         rw = sqlite3.connect(get_settings().db_path)
         try:
             result = sync(rw)
             enqueue_for_alerts(result.get("alerts", []))
+            escalated = escalate(rw, now_s).get("escalated", 0)
+        finally:
+            rw.close()
+    else:
+        # even without new events, let SLA clocks keep ticking
+        from app.milestones.rules import escalate
+
+        rw = sqlite3.connect(get_settings().db_path)
+        try:
+            escalated = escalate(rw, now_s).get("escalated", 0)
         finally:
             rw.close()
 
-    return {"advanced_s": state["speed"] * _TICK_INTERVAL_S, "emitted": emitted, "sim_now": now_s}
+    return {
+        "advanced_s": state["speed"] * _TICK_INTERVAL_S,
+        "emitted": emitted,
+        "escalated": escalated,
+        "sim_now": now_s,
+    }
 
 
 async def _loop():

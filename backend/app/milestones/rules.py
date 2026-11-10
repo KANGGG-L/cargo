@@ -152,6 +152,7 @@ def sync(conn: sqlite3.Connection) -> dict[str, Any]:
                     "OPEN",
                     now,
                     now,
+                    _due_from(now, cand["severity"]),
                 )
             )
             created_alerts.append(
@@ -172,8 +173,8 @@ def sync(conn: sqlite3.Connection) -> dict[str, Any]:
     conn.executemany(
         """
         INSERT INTO fact_alerts (alert_id, shipment_id, rule_id, source, severity,
-                                 title, detail, status, created_ts, updated_ts)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                 title, detail, status, created_ts, updated_ts, due_ts)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         inserts,
     )
@@ -184,6 +185,75 @@ def sync(conn: sqlite3.Connection) -> dict[str, Any]:
 
 # SLA hours by severity — overdue escalation driver (P2)
 SLA_HOURS = {"high": 4, "medium": 12, "info": 48}
+
+# Escalation ceiling: L0 (fresh) → L3 (exec). Each breach bumps a level and
+# pushes due_ts out by the SLA window again.
+MAX_ESCALATION_LEVEL = 3
+
+
+def _due_from(now: str, severity: str) -> str | None:
+    """Initial due timestamp = now + SLA window for the severity."""
+    hours = SLA_HOURS.get(severity)
+    if hours is None:
+        return None
+    from datetime import datetime, timedelta
+
+    base = datetime.strptime(now[:19], "%Y-%m-%dT%H:%M:%S")
+    return (base + timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def escalate(conn: sqlite3.Connection, now: str) -> dict[str, Any]:
+    """Advance escalation_level on OPEN/ACK alerts whose due_ts has passed.
+
+    Each escalation bumps the level (capped at MAX_ESCALATION_LEVEL) and pushes
+    due_ts out by the SLA window so the same breach is not counted twice within
+    one window (idempotent per window). L2+ emits a notification.
+    """
+    conn.execute("PRAGMA query_only = OFF")
+    rows = conn.execute(
+        """
+        SELECT alert_id, shipment_id, severity, title, detail,
+               COALESCE(escalation_level, 0) AS lvl
+        FROM fact_alerts
+        WHERE status IN ('OPEN', 'ACKNOWLEDGED')
+          AND due_ts IS NOT NULL AND due_ts < :now
+          AND COALESCE(escalation_level, 0) < :cap
+        ORDER BY alert_id
+        """,
+        {"now": now, "cap": MAX_ESCALATION_LEVEL},
+    ).fetchall()
+
+    escalated: list[dict[str, Any]] = []
+    for alert_id, shipment_id, severity, title, detail, lvl in rows:
+        new_lvl = lvl + 1
+        new_due = _due_from(now, severity)
+        conn.execute(
+            "UPDATE fact_alerts SET escalation_level = ?, due_ts = ?, updated_ts = ? "
+            "WHERE alert_id = ?",
+            (new_lvl, new_due, now, alert_id),
+        )
+        escalated.append(
+            {
+                "alert_id": alert_id,
+                "shipment_id": shipment_id,
+                "severity": "high" if new_lvl >= 2 else severity,
+                "title": f"L{new_lvl} ESCALATED: {title}"[:120],
+                "detail": f"SLA breached (L{new_lvl}). {detail}"[:500],
+                "event_kind": "ALERT",
+                "escalation_level": new_lvl,
+            }
+        )
+    conn.commit()
+
+    # L2+ escalations fan out a notice (reuse the alert outbox matcher)
+    notify = [e for e in escalated if e["escalation_level"] >= 2]
+    enqueued = 0
+    if notify:
+        from app.notifications.outbox import enqueue_for_alerts
+
+        enqueued = enqueue_for_alerts(notify)
+
+    return {"escalated": len(escalated), "notifications_enqueued": enqueued}
 
 
 def cluster_by_service(conn: sqlite3.Connection) -> dict[str, Any]:

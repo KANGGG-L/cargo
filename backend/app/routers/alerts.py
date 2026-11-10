@@ -37,7 +37,9 @@ def _now() -> str:
 @router.post("/sync")
 def sync_alerts(request: Request):
     require_write(request)
-    conn = _ro()
+    # sync() reads candidates then INSERTs new alerts, so it needs a writable
+    # connection (a mode=ro handle cannot be unlocked by PRAGMA query_only).
+    conn = sqlite3.connect(get_settings().db_path)
     try:
         result = sync(conn)
     finally:

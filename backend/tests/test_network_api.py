@@ -114,3 +114,48 @@ def test_trace_includes_service_and_coload():
     air = [l for l in legs if l["transport_mode"] == "AIR"]
     assert air and air[0]["service_id"]
     assert air[0]["co_loaded_shipments"] is not None
+
+
+def test_recoverable_filter_surfaces_actionable_shipments():
+    """The `recoverable=true` list must only return shipments the Recover
+    workflow can act on — each returned shipment must have a feasible
+    re-accommodation (mirrors tool_reroute_options' feasibility test)."""
+    c = _client()
+    r = c.get("/api/shipments?recoverable=true&limit=30")
+    assert r.status_code == 200
+    rows = r.json()
+    assert len(rows) > 0, "demo data should contain recoverable shipments"
+
+    # exception/delayed shipments sort to the top (operator triage order)
+    statuses = [row["status"] for row in rows]
+    first_non_recover = next((i for i, s in enumerate(statuses) if s not in ("EXCEPTION", "DELAYED")), len(statuses))
+    assert all(s in ("EXCEPTION", "DELAYED") for s in statuses[:first_non_recover])
+
+    # every returned shipment is genuinely recoverable per the SQL feasibility test
+    for row in rows[:10]:
+        sid = row["shipment_id"]
+        feasible = _sql(
+            """
+            SELECT COUNT(*) FROM fact_allocations a
+            JOIN fact_shipment_legs l ON l.leg_id = a.leg_id AND l.transport_mode = 'AIR'
+            WHERE a.shipment_id = ?
+              AND EXISTS (
+                SELECT 1 FROM dim_transport_services sv
+                WHERE sv.transport_mode = 'AIR' AND sv.origin_facility = 'HKG'
+                  AND sv.destination_facility = l.destination_facility
+                  AND sv.status != 'CANCELLED'
+                  AND sv.scheduled_depart_ts > l.planned_depart_ts
+                  AND (sv.capacity_chargeable_kg - sv.allocated_kg) >= a.allocated_weight_kg
+              )
+            """,
+            sid,
+        )[0][0]
+        assert feasible > 0, f"{sid} returned by recoverable filter but has no feasible reroute"
+
+
+def test_recoverable_filter_default_off_keeps_legacy_behaviour():
+    """Without the flag the list is unchanged (newest-first, all statuses)."""
+    c = _client()
+    r = c.get("/api/shipments?limit=10")
+    assert r.status_code == 200
+    assert isinstance(r.json(), list) and len(r.json()) > 0

@@ -243,6 +243,27 @@
         "title": "OrderRequest",
         "type": "object"
       },
+      "ReaccommodateRequest": {
+        "properties": {
+          "reason": {
+            "default": "DISRUPTION",
+            "maxLength": 16,
+            "title": "Reason",
+            "type": "string"
+          },
+          "to_service_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "To Service Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "to_service_id"
+        ],
+        "title": "ReaccommodateRequest",
+        "type": "object"
+      },
       "SubscriptionRequest": {
         "properties": {
           "channel": {
@@ -1150,6 +1171,114 @@
           }
         },
         "summary": "Data Quality",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/api/network/reaccommodate/{shipment_id}": {
+      "post": {
+        "description": "Commit a re-accommodation: roll the allocation, resolve alerts, notify.",
+        "operationId": "reaccommodate_shipment_api_network_reaccommodate__shipment_id__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReaccommodateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reaccommodate Shipment",
+        "tags": [
+          "network"
+        ]
+      }
+    },
+    "/api/network/reroute-options/{shipment_id}": {
+      "get": {
+        "description": "Feasible alternative AIR services for a shipment after a missed cut-off.",
+        "operationId": "reroute_options_api_network_reroute_options__shipment_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "at_ts",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At Ts"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reroute Options",
         "tags": [
           "network"
         ]
@@ -2289,6 +2418,18 @@
               ],
               "description": "DELIVERED | DELAYED | EXCEPTION",
               "title": "Status"
+            }
+          },
+          {
+            "description": "Only shipments with an AIR allocation that has a feasible re-accommodation (future, non-cancelled HKG service with room). These are the shipments the Recover workflow can actually act on.",
+            "in": "query",
+            "name": "recoverable",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Only shipments with an AIR allocation that has a feasible re-accommodation (future, non-cancelled HKG service with room). These are the shipments the Recover workflow can actually act on.",
+              "title": "Recoverable",
+              "type": "boolean"
             }
           },
           {

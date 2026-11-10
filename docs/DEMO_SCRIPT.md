@@ -1,4 +1,31 @@
-# 面试演示剧本 v2(8 分钟,v0.2 功能全套)
+# 面试演示剧本 v3(operator-centric:按一次值班的生命周期演示)
+
+> **讲法升级**:v2 是"按模块导览"(第 1 站总览、第 2 站地图……),让面试官看到"你做了哪些页面"。
+> v3 按**一次台风值班的生命周期**串起来——侦测 → 分诊 → 诊断 → **恢复** → 通知 → **升级**,
+> 让面试官看到"你懂控制塔怎么运转"。下面 v3 剧本在前,v2 模块导览保留在后作为备查。
+
+前置:面试前一天跑 `scripts/rebuild_demo.sh`;`backend` 起 uvicorn(8000),`frontend` 起 `pnpm start`(3000)。
+
+## v3 台风值班生命周期(8 分钟)
+
+控制塔的唯一 KPI 是"红灯亮起到客户收到改期通知的响应时间"。整条链路一次演完:
+
+1. **接班 / 侦测(`/alerts`)** — 运营时钟在你"睡觉时"推进(`POST /api/ops/clock/start`),规则引擎(R1-R4)已把看板点红。不是"我点 Run scan",而是"我接班,看板已经红了"。
+   - 自验:`curl -s localhost:8000/api/alerts/summary`
+2. **分诊(`/alerts`)** — 升级/超时的告警带红色左边框 + `L{n} ESCALATED` 徽标**自动置顶**;点 **Cluster** 把一整班航班的滞留货聚成 1 个 SERVICE 父单。讲点:exception-first——"我不逐票看,先看最致命的那班航班"。
+3. **诊断(`/agent`)** — `Why did air OTP collapse in September 2025?` → `diagnose_anomaly` 把 OTP 塌陷归因到 `TYPHOON_2025_09`。讲点:AI 是分诊助手。
+4. **决策反事实(`/agent`)** — `What should I do about SHP-2025-000001?` → `recovery_tradeoff` 给"不改配 vs 改配"的成本/时效对照卡 + 推荐。讲点:控制塔不只告诉你出事,还**量化每个恢复动作的代价**。
+5. **恢复(`/network`,核心高光)** — 选中那票货,点 **Recover** → 列出可行改配航班 → **Re-accommodate**:一次动作完成「改配写库(allocation ROLLED→REACCOMMODATED)+ 容量守恒 + 关联告警自动 RESOLVED + 发通知」。讲点:这是"能查更能做"的执行闭环,不是停在看板。
+   - 自验:改配后回 `/alerts`,该票告警已 RESOLVED;`/network` capacity 页 rolled-by-reason +1。
+6. **通知(`/alerts` 发件箱)** — 订阅者按 AWB 收到主动改期推送(PENDING → Dispatch → SENT)。讲点:台风下主动推送,而不是等客户 WISMO 来问。
+7. **升级(`/alerts`)** — 继续推进运营时钟,未处理且过 `due_ts` 的告警自动 `escalation_level++` 并标红置顶。讲点:SLA 超时自动升级,呼应行业的升级矩阵。
+
+**一句收束**:"从红灯亮起,到改配落地、客户收到改期通知——我演示的是这条链路的响应时间,这是控制塔唯一真正的 KPI。"
+
+---
+
+# 面试演示剧本 v2(8 分钟,模块导览,备查)
+
 
 前置:面试前一天跑 `scripts/rebuild_demo.sh`(重建演示库到初态,seed=42 字节级可复现);`backend` 起 uvicorn(8000),`frontend` 起 `pnpm start`(3000)。
 

@@ -20,9 +20,12 @@ jobs:
         run: |
           python scripts/generate_data.py
           python scripts/init_db.py
-      - name: Test suite (140 tests: firewall, invariants, DES, events, standards, governance, eval)
+      - name: Test suite (firewall, invariants, recovery loop, escalation, DES, events, standards, governance, eval)
         working-directory: backend
         run: python -m pytest tests/ -q
+      - name: End-to-end UAT (every page's backing API via ASGI TestClient)
+        working-directory: backend
+        run: python scripts/uat.py
       - name: Determinism check (network CSVs byte-identical on re-run)
         working-directory: backend
         run: |
@@ -53,6 +56,9 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: pnpm install --frozen-lockfile
+      - name: Lint (ESLint + React Hooks rules)
+        working-directory: frontend
+        run: pnpm lint
       - name: Build (type check + compile)
         working-directory: frontend
         run: pnpm build

@@ -15,10 +15,11 @@
 3. **告警工作台** — 里程碑缺失/超时规则引擎(R1-R4)、异常工单流转(OPEN→ACK→RESOLVED→CLOSED)、通知订阅(事务性 outbox,按 AWB 订阅)
 4. **订单工作台** — 状态机 DRAFT→QUOTED→BOOKED→IN_PROGRESS→COMPLETED(guards:AWB/危险品申报/RCS 事件)、AWB 分配(模 7 校验位)、文档中心(AWB/DG 申报/装箱单 PDF)、一键结算开票(运费+燃油+THC+滞期费)
 5. **数据接入** — CIMP 风格 FSU 报文进站解析(去重/乱序/拒绝队列),补录到达自动销警
-6. **AI 运营分析师** — 一个 Agent、十个工具:
+6. **AI 运营分析师** — 一个 Agent、十一个工具:
    - `query_data` — 自然语言查数(Text-to-SQL + 语义层 + 只读 SQL 防火墙),自动配表和图
    - `diagnose_anomaly` — KPI 偏离基线检测 + 扰动事件归因 + 流程改进建议
    - `simulate_disruption` — 台风/港口拥堵/口岸拥堵的确定性量化模拟(fifo / des 双引擎 A/B)
+   - `recovery_tradeoff` — "不改配 vs 改配"的成本/时效反事实对照 + 推荐(决策支持)
    - `quote_booking` — 按航线×模态×重量段报价(海空联运)
    - `raise_alert` — 诊断结论一键生成异常工单(写操作需 confirmation_token 二次确认 + 审计)
    - `network_load` / `capacity_impact` / `reroute_options` / `manifest_lookup` — 共享运力网络级查询与改配
@@ -75,15 +76,31 @@ pnpm install && pnpm build && pnpm start   # http://localhost:3000
 
 **三模态对等**:空运(台风)、陆运(深圳湾口岸拥堵)、海运(盐田港拥堵)各有一级 KPI 序列、各自的异常剧情与专属诊断/模拟场景——这不是一个空运仪表盘。
 
-关键设计决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),指标口径见 [docs/DATA_DICTIONARY.md](docs/DATA_DICTIONARY.md),面试演示剧本见 [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)。
+**运营员闭环(operator loop)**:控制塔不是只读报表,而是驱动人做事的一条闭环——
+
+```
+  侦测            分诊              诊断            决策              恢复            通知          升级
+ Detect   →    Triage    →    Diagnose   →   Decide    →   Recover   →   Notify   →  Escalate
+ 规则引擎      SLA排序/聚类    diagnose_      recovery_      Re-accommodate  事务性        due_ts 超时
+ R1-R4 自动    L{n} 置顶       anomaly        tradeoff       改配写库+       outbox        escalation_
+ 发告警                       (归因事件)     (成本vs时效)    容量守恒+销警    主动推送      level++ 标红
+   │              │              │              │              │              │             │
+   └──────────────┴──────────────┴──────────────┴──── 运营时钟 tick 驱动(加速模拟时间)────────┘
+```
+
+> 唯一真正的 KPI 是"红灯亮起 → 改配落地 → 客户收到改期通知"的**响应时间**,而非某张图好不好看。
+
+关键设计决策见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),指标口径见 [docs/DATA_DICTIONARY.md](docs/DATA_DICTIONARY.md),面试演示剧本见 [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md),运营员闭环推进计划见 [docs/OPERATOR_LOOP_PLAN.md](docs/OPERATOR_LOOP_PLAN.md)。
 
 ## 工程亮点
 
+- **operator-centric 恢复闭环**:异常不是"看板上的红灯",而是可被**处置**的对象——`/network` 上一键 **Re-accommodate**(改配)在单事务内完成「allocation 改签(`CONFIRMED`→`REACCOMMODATED`,记 `rolled_from`/`roll_reason`)+ 共享运力容量守恒 + 关联告警自动 RESOLVED + 主动通知」,并写审计。演示按"一次台风值班的生命周期"串讲(侦测→分诊→诊断→恢复→通知→升级),不是模块导览(见 [DEMO_SCRIPT](docs/DEMO_SCRIPT.md) v3)
+- **SLA 自动升级**:告警按严重度带 `due_ts`,运营时钟每 tick 推进——超时未处理自动 `escalation_level++`、标红置顶、L2+ 扇出通知,呼应行业升级矩阵
 - **只读 SQL 防火墙**(三层):sqlglot AST 校验(单语句、纯 SELECT、表白名单)+ LIMIT 强制钳制 + SQLite `mode=ro` 硬兜底 —— LLM 生成的 SQL 一律过闸
 - **模态无关的数据模型**:运营事实按"段"存储并带 `transport_mode` 字段,空运/海运/陆运叙事共用同一 schema,切换业务线零迁移
 - **mock/live 双模式 LLM**:同一事件接口;mock 用 df 加权匹配语义层 verified few-shot,语言是剧本、数据是真的
 - **确定性合成数据**:seed=42 字节级可复现;延误级联(驳船/卡车晚点 → 脱班改签 → 端到端延误)有物理一致性约束
-- **140 项测试**:防火墙攻击向量、四个异常剧情存在性断言、三模态 KPI 对等、引用完整性、共享运力不变量(容量守恒/配载唯一/截关可行/台风级联)、DES 确定性与优先级仲裁、事件日志幂等、网络级 ETA/告警聚类、标准码映射、数据质量可复算、Agent 写操作审计与确认门、语义层 eval、OpenAPI 契约
+- **163 项单元测试 + 80 项端到端 UAT**:防火墙攻击向量、四个异常剧情存在性断言、三模态 KPI 对等、引用完整性、共享运力不变量(容量守恒/配载唯一/截关可行/台风级联)、**恢复闭环(改配写库+容量守恒+销警)**、**SLA 自动升级**、DES 确定性与优先级仲裁、事件日志幂等、网络级 ETA/告警聚类、标准码映射、数据质量可复算、Agent 写操作审计与确认门、语义层 eval、OpenAPI 契约;`backend/scripts/uat.py` 用 ASGI TestClient 把每个页面背后的 API 全链路跑一遍(登录/行级隔离/状态机/改配/升级/结算/文档/SSE),退出码非零即失败
 
 ## 数据诚实声明
 

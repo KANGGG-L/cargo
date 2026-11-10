@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { Bell, Plane, Search, Ship, Truck, type LucideIcon } from "lucide-react";
+import { Bell, Plane, Search, Ship, Shuffle, Truck, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { EChartsOption } from "echarts";
 import { api } from "@/lib/api";
@@ -12,8 +12,9 @@ import type {
   TrackLeg,
   TraceLeg,
   TracePayload,
+  RerouteOption,
 } from "@/lib/api";
-import ChartPanel, { DARK_AXIS } from "@/components/ChartPanel";
+import ChartPanel from "@/components/ChartPanel";
 
 const ShipmentMap = dynamic(() => import("@/components/ShipmentMap"), {
   ssr: false,
@@ -49,6 +50,7 @@ function fmtTs(ts: string): string {
 export default function NetworkPage() {
   const [chain, setChain] = useState("ALL");
   const [status, setStatus] = useState("");
+  const [recoverable, setRecoverable] = useState(false);
   const [query, setQuery] = useState("");
   const [shipments, setShipments] = useState<ShipmentListItem[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -60,6 +62,10 @@ export default function NetworkPage() {
   const [subEmail, setSubEmail] = useState("");
   const [subOpen, setSubOpen] = useState(false);
   const [subMsg, setSubMsg] = useState<string | null>(null);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
+  const [recoveryOpts, setRecoveryOpts] = useState<RerouteOption[] | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState<string | null>(null);
+  const [recoveryMsg, setRecoveryMsg] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     if (!shipments) return null;
@@ -75,13 +81,17 @@ export default function NetworkPage() {
   }, [shipments, query]);
 
   // selection derived from the filtered set (falls back to the first match) —
-  // no effect needed, so filter changes never select an invisible row
+  // no effect needed, so filter changes never select an invisible row.
+  // A deep-linked ?sid= that isn't in the current list is still honoured, so
+  // shareable links (and the demo script's fixed sid) always load that shipment.
   const activeId =
-    filtered && filtered.length > 0
-      ? filtered.some((s) => s.shipment_id === selectedId)
-        ? selectedId
-        : filtered[0].shipment_id
-      : null;
+    selectedId && (!filtered || !filtered.some((s) => s.shipment_id === selectedId))
+      ? selectedId
+      : filtered && filtered.length > 0
+        ? filtered.some((s) => s.shipment_id === selectedId)
+          ? selectedId
+          : filtered[0].shipment_id
+        : null;
 
   async function subscribe() {
     if (!activeId) return;
@@ -93,6 +103,49 @@ export default function NetworkPage() {
     } catch (e) {
       const raw = e instanceof Error ? e.message : String(e);
       setSubMsg(raw.startsWith("Error: ") ? raw.slice(7) : raw);
+    }
+  }
+
+  async function openRecovery() {
+    if (!activeId) return;
+    const next = !recoveryOpen;
+    setRecoveryOpen(next);
+    setRecoveryMsg(null);
+    if (next && !recoveryOpts) {
+      try {
+        const payload = await api.rerouteOptions(activeId);
+        setRecoveryOpts(payload.options ?? []);
+      } catch (e) {
+        setRecoveryMsg(e instanceof Error ? e.message : String(e));
+      }
+    }
+  }
+
+  async function reaccommodate(toServiceId: string) {
+    if (!activeId) return;
+    setRecoveryBusy(toServiceId);
+    setRecoveryMsg(null);
+    try {
+      const res = await api.reaccommodate(activeId, toServiceId, "DISRUPTION");
+      setRecoveryMsg(
+        res.no_op
+          ? "Already on that service."
+          : `Rolled ${res.rolled_from} → ${res.rolled_to} · resolved ${res.resolved_alerts.length} alert(s) · ${res.notifications_enqueued} notice(s) queued`
+      );
+      // refresh trace + milestones + options to reflect the new state
+      setRecoveryOpts(null);
+      setSelectedId(activeId);
+      const [tr, ms] = await Promise.all([
+        api.trace(activeId).catch(() => null),
+        api.milestones(activeId).then((r) => r.milestones).catch(() => null),
+      ]);
+      if (tr) setTrace(tr);
+      if (ms) setMilestones(ms);
+    } catch (e) {
+      const raw = e instanceof Error ? e.message : String(e);
+      setRecoveryMsg(raw.startsWith("Error: ") ? raw.slice(7) : raw);
+    } finally {
+      setRecoveryBusy(null);
     }
   }
 
@@ -124,19 +177,32 @@ export default function NetworkPage() {
   }, [chain, status, query, activeId]);
 
   useEffect(() => {
-    api.shipments(chain === "ALL" ? undefined : chain, status || undefined)
+    api.shipments(chain === "ALL" ? undefined : chain, status || undefined, recoverable || undefined)
       .then((rows) => setShipments(rows))
       .catch(() => setShipments([]));
-  }, [chain, status]);
+  }, [chain, status, recoverable]);
 
   useEffect(() => {
     if (!activeId) return;
-    setTrace(null);
-    setMilestones(null);
-    setTracks(null);
-    api.trace(activeId).then(setTrace).catch(() => setTrace(null));
-    api.milestones(activeId).then((r) => setMilestones(r.milestones)).catch(() => setMilestones(null));
-    api.tracks(activeId).then((r) => setTracks(r.tracks)).catch(() => setTracks(null));
+    let alive = true;
+    async function loadTrace(id: string) {
+      setTrace(null);
+      setMilestones(null);
+      setTracks(null);
+      const [tr, ms, tk] = await Promise.all([
+        api.trace(id).catch(() => null),
+        api.milestones(id).then((r) => r.milestones).catch(() => null),
+        api.tracks(id).then((r) => r.tracks).catch(() => null),
+      ]);
+      if (!alive) return;
+      setTrace(tr);
+      setMilestones(ms);
+      setTracks(tk);
+    }
+    loadTrace(activeId);
+    return () => {
+      alive = false;
+    };
   }, [activeId]);
 
   useEffect(() => {
@@ -246,6 +312,18 @@ export default function NetworkPage() {
                   {s || "ANY STATUS"}
                 </button>
               ))}
+              <button
+                onClick={() => setRecoverable((v) => !v)}
+                title="Only shipments the Recover workflow can act on (AIR leg with a feasible re-accommodation)"
+                className={`ml-auto rounded-md border px-2 py-1 text-[10px] font-medium transition-colors ${
+                  recoverable
+                    ? "border-amber-400 bg-amber-50 text-amber-700"
+                    : "border-zinc-200 text-zinc-500 hover:text-zinc-700"
+                }`}
+              >
+                <Shuffle className="mr-0.5 inline h-3 w-3" />
+                Recoverable
+              </button>
             </div>
             <div className="relative mt-2">
               <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
@@ -314,7 +392,56 @@ export default function NetworkPage() {
                 >
                   <Bell className="inline h-3 w-3" /> Subscribe
                 </button>
+                <button
+                  onClick={openRecovery}
+                  className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[10px] text-amber-700 hover:border-amber-400"
+                >
+                  <Shuffle className="inline h-3 w-3" /> Recover
+                </button>
               </div>
+              {recoveryOpen && (
+                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5">
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
+                    Recovery options — re-accommodate air leg
+                  </div>
+                  {recoveryOpts === null && !recoveryMsg && (
+                    <div className="text-[11px] text-zinc-500">Loading alternatives…</div>
+                  )}
+                  {recoveryOpts && recoveryOpts.length === 0 && (
+                    <div className="text-[11px] text-zinc-500">
+                      No alternative services in the schedule.
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-1.5">
+                    {(recoveryOpts ?? []).map((o) => (
+                      <div
+                        key={o.service_id}
+                        className="flex items-center gap-2 rounded border border-zinc-200 bg-white px-2 py-1.5 text-[11px]"
+                      >
+                        <span className="font-medium text-zinc-900">{o.service_no}</span>
+                        <span className="text-zinc-500">{o.depart?.slice(0, 16).replace("T", " ")}</span>
+                        <span
+                          className={`rounded px-1 py-0.5 text-[10px] ${
+                            o.has_room ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                          }`}
+                        >
+                          {o.load_pct ?? 0}% full
+                        </span>
+                        <button
+                          disabled={!o.has_room || recoveryBusy === o.service_id}
+                          onClick={() => reaccommodate(o.service_id)}
+                          className="ml-auto rounded bg-amber-600 px-2.5 py-1 text-[10px] font-medium text-white hover:bg-amber-700 disabled:opacity-40"
+                        >
+                          {recoveryBusy === o.service_id ? "Rolling…" : "Re-accommodate"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {recoveryMsg && (
+                    <div className="mt-2 text-[11px] text-amber-800">{recoveryMsg}</div>
+                  )}
+                </div>
+              )}
               {subOpen && (
                 <div className="mb-3 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2">
                   <input

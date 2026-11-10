@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Radar, TriangleAlert } from "lucide-react";
+import { Radar } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import ToolActivityCard, { type ToolEvent } from "@/components/ToolActivityCard";
 
@@ -151,10 +151,10 @@ export default function AgentPage() {
           </span>
         </div>
         <p className="text-[11px] leading-relaxed text-zinc-500">
-          One agent, ten tools: Text-to-SQL querying, anomaly diagnosis,
+          One agent, eleven tools: Text-to-SQL querying, anomaly diagnosis,
           disruption simulation (fifo/des A/B), freight quotes, alert creation,
-          ETA prediction, plus network load, capacity impact, reroute options and
-          manifest lookup. {llmMode === "mock" && "Mock mode replays verified traces against the real database — no API key needed."}
+          ETA prediction, recovery trade-off, plus network load, capacity impact,
+          reroute options and manifest lookup. {llmMode === "mock" && "Mock mode replays verified traces against the real database — no API key needed."}
         </p>
         <div className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
           Try asking

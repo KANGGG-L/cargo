@@ -34,27 +34,49 @@ export default function AlertsPage() {
   const [summary, setSummary] = useState<AlertSummary | null>(null);
   const [status, setStatus] = useState("OPEN");
   const [severity, setSeverity] = useState("");
+  const [limitCount, setLimitCount] = useState(200);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [outbox, setOutbox] = useState<OutboxRow[] | null>(null);
+  const [nowMs, setNowMs] = useState(0);
 
   const load = useCallback(async () => {
     setAlerts(null);
     const [list, sum, box] = await Promise.all([
-      api.alerts(status || undefined, severity || undefined),
+      api.alerts(status || undefined, severity || undefined, limitCount),
       api.alertSummary(),
       api.outbox(),
     ]);
     setAlerts(list);
     setSummary(sum);
     setOutbox(box);
-  }, [status, severity]);
+  }, [status, severity, limitCount]);
 
-  const [outbox, setOutbox] = useState<OutboxRow[] | null>(null);
+  const filteredTotal = summary
+    ? status
+      ? (summary.by_status[status] ?? 0)
+      : Object.values(summary.by_status).reduce((a, b) => a + b, 0)
+    : null;
 
   useEffect(() => {
-    load().catch((e) => setError(String(e)));
-    const t = setInterval(() => load().catch(() => {}), 8000);
-    return () => clearInterval(t);
+    let alive = true;
+    async function tick() {
+      try {
+        await load();
+        if (alive) setNowMs(Date.now());
+      } catch (e) {
+        if (alive) setError(String(e));
+      }
+    }
+    tick();
+    const t = setInterval(() => {
+      setNowMs(Date.now());
+      load().catch(() => {});
+    }, 8000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
   }, [load]);
 
   async function runScan() {
@@ -76,7 +98,8 @@ export default function AlertsPage() {
       await api.transitionAlert(id, to, note, assignee);
       await load();
     } catch (e) {
-      setError(String(e));
+      const raw = e instanceof Error ? e.message : String(e);
+      setError(raw.startsWith("Error: ") ? raw.slice(7) : raw);
     } finally {
       setBusy(null);
     }
@@ -125,7 +148,10 @@ export default function AlertsPage() {
         {STATUSES.map((s) => (
           <button
             key={s || "all"}
-            onClick={() => setStatus(s)}
+            onClick={() => {
+              setStatus(s);
+              setLimitCount(200);
+            }}
             className={`rounded-md border px-2 py-1 text-[10px] font-medium ${
               status === s
                 ? "border-zinc-300 bg-zinc-100 text-indigo-600"
@@ -139,7 +165,10 @@ export default function AlertsPage() {
         {["", "high", "medium", "info"].map((sv) => (
           <button
             key={sv || "any"}
-            onClick={() => setSeverity(sv)}
+            onClick={() => {
+              setSeverity(sv);
+              setLimitCount(200);
+            }}
             className={`rounded-md border px-2 py-1 text-[10px] font-medium ${
               severity === sv
                 ? "border-zinc-400 bg-zinc-100 text-zinc-900"
@@ -163,13 +192,39 @@ export default function AlertsPage() {
         {alerts?.length === 0 && (
           <div className="text-xs text-zinc-500">No alerts match the filter.</div>
         )}
-        {alerts?.map((a) => (
-          <div key={a.alert_id} className="rounded-xl border border-zinc-200 bg-white p-3">
+        {[...(alerts ?? [])]
+          .sort(
+            (x, y) =>
+              (y.escalation_level ?? 0) - (x.escalation_level ?? 0) ||
+              (x.due_ts ?? "9999").localeCompare(y.due_ts ?? "9999")
+          )
+          .map((a) => {
+          const lvl = a.escalation_level ?? 0;
+          const overdue =
+            a.due_ts != null &&
+            (a.status === "OPEN" || a.status === "ACKNOWLEDGED") &&
+            new Date(a.due_ts).getTime() < nowMs;
+          return (
+          <div
+            key={a.alert_id}
+            className={`rounded-xl border bg-white p-3 ${
+              lvl >= 1
+                ? "border-l-4 border-l-rose-500 border-rose-200"
+                : overdue
+                  ? "border-l-4 border-l-amber-400 border-zinc-200"
+                  : "border-zinc-200"
+            }`}
+          >
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="font-mono font-bold text-zinc-900">{a.alert_id}</span>
               <span className={`rounded border px-1.5 py-0.5 text-[9px] ${SEVERITY_STYLE[a.severity] ?? ""}`}>
                 {a.severity.toUpperCase()}
               </span>
+              {lvl >= 1 && (
+                <span className="rounded border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[9px] font-bold text-rose-700">
+                  L{lvl} ESCALATED
+                </span>
+              )}
               <span className={`rounded border px-1.5 py-0.5 text-[9px] ${STATUS_STYLE[a.status] ?? ""}`}>
                 {a.status}
               </span>
@@ -179,6 +234,11 @@ export default function AlertsPage() {
                 </span>
               )}
               <span className="text-[10px] text-zinc-400">source: {a.source}</span>
+              {a.due_ts && (
+                <span className={`text-[10px] ${overdue ? "font-semibold text-rose-600" : "text-zinc-400"}`}>
+                  {overdue ? "overdue" : "due"} {new Date(a.due_ts).toISOString().slice(5, 16).replace("T", " ")}
+                </span>
+              )}
               <span className="ml-auto font-mono text-[11px] text-indigo-600">{a.shipment_id}</span>
               <span className="text-[10px] text-zinc-500">
                 {a.transport_chain_type} → {a.destination_location}
@@ -209,7 +269,31 @@ export default function AlertsPage() {
               </span>
             </div>
           </div>
-        ))}
+          );
+        })}
+        {/* pagination footer */}
+        {alerts !== null && filteredTotal !== null && (
+          <div className="flex items-center justify-center gap-3 py-2 text-[11px] text-zinc-500">
+            <span>
+              Showing {alerts.length.toLocaleString()} of {filteredTotal.toLocaleString()}
+              {status ? ` ${status.toLowerCase()}` : ""}
+            </span>
+            {alerts.length < filteredTotal && alerts.length < 500 ? (
+              <button
+                onClick={() => setLimitCount((l) => Math.min(500, l + 300))}
+                className="rounded-md border border-zinc-300 px-2.5 py-1 text-[10px] font-medium text-zinc-700 hover:border-zinc-400 hover:text-indigo-600"
+              >
+                Load more
+              </button>
+            ) : (
+              alerts.length < filteredTotal && (
+                <span className="text-zinc-400">
+                  Page cap reached — narrow the filters to see more.
+                </span>
+              )
+            )}
+          </div>
+        )}
       </div>
       {/* notification outbox */}
       <div className="rounded-xl border border-zinc-200 bg-white p-4">

@@ -12,6 +12,7 @@ import {
   MessageSquareText,
   RadioTower,
   ReceiptText,
+  Scale,
   TriangleAlert,
 } from "lucide-react";
 import { DARK_AXIS, DARK_LEGEND } from "@/components/ChartPanel";
@@ -37,6 +38,10 @@ export interface ToolPayload {
   legs?: Record<string, unknown>[];
   total_usd?: number;
   estimated_transit_days?: number;
+  /* recovery_tradeoff */
+  plan_a_do_nothing?: Record<string, unknown>;
+  plan_b_reaccommodate?: Record<string, unknown>;
+  recommendation?: string;
 }
 
 export interface ToolEvent {
@@ -52,6 +57,7 @@ const TOOL_META: Record<string, { label: string; icon: typeof FileText }> = {
   simulate_disruption: { label: "Running disruption simulation", icon: RadioTower },
   quote_booking: { label: "Preparing freight quote", icon: ReceiptText },
   raise_alert: { label: "Raising exception ticket", icon: MessageSquareText },
+  recovery_tradeoff: { label: "Weighing recovery options", icon: Scale },
 };
 
 function chartOption(ev: ToolEvent): EChartsOption | null {
@@ -139,9 +145,12 @@ export default function ToolActivityCard({ ev }: { ev: ToolEvent }) {
           {ev.payload?.recovery_curve && <RecoveryChart ev={ev} />}
           {ev.payload?.findings && <FindingsList ev={ev} />}
           {ev.payload?.legs && !option && <QuoteBreakdown ev={ev} />}
-          {!option && !ev.payload?.recovery_curve && !ev.payload?.findings && !ev.payload?.legs && (
-            <DataTable ev={ev} />
-          )}
+          {ev.payload?.plan_a_do_nothing && <TradeoffCard ev={ev} />}
+          {!option &&
+            !ev.payload?.recovery_curve &&
+            !ev.payload?.findings &&
+            !ev.payload?.legs &&
+            !ev.payload?.plan_a_do_nothing && <DataTable ev={ev} />}
         </div>
       )}
     </div>
@@ -268,6 +277,53 @@ function QuoteBreakdown({ ev }: { ev: ToolEvent }) {
         <span>Total · est. {String(estimated_transit_days)} days</span>
         <span className="tabular-nums">${String(total_usd)}</span>
       </div>
+    </div>
+  );
+}
+
+function TradeoffCard({ ev }: { ev: ToolEvent }) {
+  const a = ev.payload!.plan_a_do_nothing as Record<string, unknown>;
+  const b = ev.payload!.plan_b_reaccommodate as Record<string, unknown>;
+  const rec = ev.payload!.recommendation;
+  const bandOf = (p: Record<string, unknown>) => {
+    const band = p.eta_delay_band_h as Record<string, number> | undefined;
+    return band ? `P80 ${band.p80}h` : "—";
+  };
+  const riskStyle: Record<string, string> = {
+    low: "text-emerald-700",
+    medium: "text-amber-700",
+    high: "text-rose-700",
+  };
+  const cost = (p: Record<string, unknown>) =>
+    p.incremental_cost_usd == null
+      ? "n/a"
+      : `+$${Number(p.incremental_cost_usd).toLocaleString()}`;
+  return (
+    <div className="space-y-2 bg-white">
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          { title: "Do nothing", p: a, accent: "border-zinc-200" },
+          { title: "Re-accommodate", p: b, accent: "border-amber-300" },
+        ].map(({ title, p, accent }) => (
+          <div key={title} className={`rounded-md border ${accent} p-2`}>
+            <div className="text-[11px] font-semibold text-zinc-900">{title}</div>
+            <div className="mt-1 text-[11px] text-zinc-600">
+              Service: {String(p.service_no ?? p.service_id ?? "—")}
+            </div>
+            <div className="text-[11px] text-zinc-600">Delay: {bandOf(p)}</div>
+            <div className={`text-[11px] ${riskStyle[String(p.sla_breach_risk)] ?? "text-zinc-600"}`}>
+              SLA risk: {String(p.sla_breach_risk ?? "—")}
+            </div>
+            <div className="text-[11px] font-medium text-zinc-900">Cost: {cost(p)}</div>
+          </div>
+        ))}
+      </div>
+      {rec && (
+        <div className="rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[11px] text-indigo-800">
+          <span className="font-semibold">Recommendation: </span>
+          {String(rec)}
+        </div>
+      )}
     </div>
   );
 }

@@ -13,10 +13,10 @@ export default function CapacityPage() {
 
   useEffect(() => {
     let alive = true;
-    setError(null);
     Promise.all([api.networkCapacity(mode), api.networkServices(mode, undefined, 20, "load")])
       .then(([c, s]) => {
         if (!alive) return;
+        setError(null);
         setCap(c);
         setServices(s);
       })

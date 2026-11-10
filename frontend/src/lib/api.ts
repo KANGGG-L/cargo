@@ -119,6 +119,32 @@ export interface NetworkPayload {
   truck_checkpoints: TruckCheckpoint[];
 }
 
+export interface RerouteOption {
+  service_id: string;
+  service_no: string;
+  depart: string;
+  cutoff: string;
+  load_pct: number | null;
+  has_room: boolean;
+}
+
+export interface RerouteOptionsPayload {
+  shipment_id: string;
+  destination: string;
+  current_service: string | null;
+  options: RerouteOption[];
+  error?: string;
+}
+
+export interface ReaccommodateResult {
+  shipment_id: string;
+  rolled_from: string;
+  rolled_to: string;
+  no_op: boolean;
+  resolved_alerts: string[];
+  notifications_enqueued: number;
+}
+
 /** Demo session: ops account auto-login (cookie kept for :8000). One-shot. */
 let sessionPromise: Promise<void> | null = null;
 export function ensureSession(): Promise<void> {
@@ -209,6 +235,8 @@ export interface AlertItem {
   updated_ts: string;
   assignee: string | null;
   resolution_note: string | null;
+  due_ts?: string | null;
+  escalation_level?: number | null;
   transport_chain_type?: string;
   destination_location?: string;
 }
@@ -260,9 +288,9 @@ export const api = {
   overview: () => getJson<OverviewPayload>("/api/analytics/overview"),
   trends: () => getJson<TrendsPayload>("/api/analytics/trends"),
   network: () => getJson<NetworkPayload>("/api/analytics/network"),
-  shipments: (chain?: string, status?: string) =>
+  shipments: (chain?: string, status?: string, recoverable?: boolean) =>
     getJson<ShipmentListItem[]>(
-      `/api/shipments?limit=60${chain ? `&chain=${chain}` : ""}${status ? `&status=${status}` : ""}`
+      `/api/shipments?limit=60${chain ? `&chain=${chain}` : ""}${status ? `&status=${status}` : ""}${recoverable ? "&recoverable=true" : ""}`
     ),
   trace: (id: string) => getJson<TracePayload>(`/api/shipments/${id}/trace`),
   sankey: () => getJson<SankeyPayload>("/api/shipments/flows/sankey?min_legs=100"),
@@ -301,6 +329,18 @@ export const api = {
     }).then(async (r) => {
       if (!r.ok) throw new Error((await r.json()).detail ?? String(r.status));
       return r.json();
+    }),
+  rerouteOptions: (id: string) =>
+    getJson<RerouteOptionsPayload>(`/api/network/reroute-options/${id}`),
+  reaccommodate: (shipmentId: string, toServiceId: string, reason = "DISRUPTION") =>
+    fetch(`${API_BASE}/api/network/reaccommodate/${shipmentId}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_service_id: toServiceId, reason }),
+    }).then(async (r) => {
+      if (!r.ok) throw new Error((await r.json()).detail ?? String(r.status));
+      return r.json() as Promise<ReaccommodateResult>;
     }),
   subscribe: (email: string, shipmentId: string) =>
     fetch(`${API_BASE}/api/notifications/subscriptions`, {

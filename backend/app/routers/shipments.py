@@ -27,13 +27,48 @@ def list_shipments(
     request: Request,
     chain: str | None = Query(None, description="SEA_AIR_TRUCK | TRUCK_AIR_TRUCK | DIRECT_AIR"),
     status: str | None = Query(None, description="DELIVERED | DELAYED | EXCEPTION"),
+    recoverable: bool = Query(
+        False,
+        description="Only shipments with an AIR allocation that has a feasible "
+        "re-accommodation (future, non-cancelled HKG service with room). These are "
+        "the shipments the Recover workflow can actually act on.",
+    ),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
 ):
     user = require_session(request)
+    # "recoverable" mirrors tool_reroute_options' feasibility test so the list
+    # only surfaces shipments the operator can actually re-accommodate.
+    recoverable_clause = (
+        """
+        AND EXISTS (
+          SELECT 1 FROM fact_allocations a
+          JOIN fact_shipment_legs l ON l.leg_id = a.leg_id AND l.transport_mode = 'AIR'
+          WHERE a.shipment_id = s.shipment_id
+            AND EXISTS (
+              SELECT 1 FROM dim_transport_services sv
+              WHERE sv.transport_mode = 'AIR' AND sv.origin_facility = 'HKG'
+                AND sv.destination_facility = l.destination_facility
+                AND sv.status != 'CANCELLED'
+                AND sv.scheduled_depart_ts > l.planned_depart_ts
+                AND (sv.capacity_chargeable_kg - sv.allocated_kg) >= a.allocated_weight_kg
+            )
+        )
+        """
+        if recoverable
+        else ""
+    )
+    # Triage ordering (EXCEPTION > DELAYED > rest) only applies to the recoverable
+    # view — the default list stays newest-first so freshly-created orders surface.
+    order_clause = (
+        "ORDER BY CASE s.status WHEN 'EXCEPTION' THEN 0 WHEN 'DELAYED' THEN 1 ELSE 2 END, "
+        "s.booking_ts DESC"
+        if recoverable
+        else "ORDER BY s.booking_ts DESC"
+    )
     rows = db.execute(
         text(
-            """
+            f"""
             SELECT s.shipment_id, s.customer_id, s.transport_chain_type, s.cargo_category,
                    s.status, s.origin_location, s.destination_location,
                    s.total_chargeable_weight_kg, s.contracted_revenue_usd,
@@ -43,7 +78,8 @@ def list_shipments(
             WHERE (:chain IS NULL OR s.transport_chain_type = :chain)
               AND (:status IS NULL OR s.status = :status)
               AND (:customer IS NULL OR s.customer_id = :customer)
-            ORDER BY s.booking_ts DESC
+              {recoverable_clause}
+            {order_clause}
             LIMIT :limit
             """
         ),

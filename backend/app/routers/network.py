@@ -6,10 +6,11 @@ ops-facing read APIs guarded by the shared session dependency.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.auth import require_full_read, require_session
+from app.auth import require_full_read, require_session, require_write
 from app.db import get_db
 
 router = APIRouter(
@@ -197,3 +198,41 @@ def data_quality(request: Request, db: Session = Depends(get_db)):
     dq = db.execute(text("SELECT * FROM v_data_quality")).mappings().one_or_none()
     trust = db.execute(text("SELECT * FROM v_source_trust ORDER BY source")).mappings().all()
     return {"quality": dict(dq) if dq else {}, "source_trust": [dict(r) for r in trust]}
+
+
+# --------------------------------------------------------------------------
+# Recovery closed-loop (Release A): propose reroute options, then commit a
+# re-accommodation that writes the allocation, resolves alerts and notifies.
+
+
+@router.get("/reroute-options/{shipment_id}")
+async def reroute_options(request: Request, shipment_id: str, at_ts: str | None = Query(None)):
+    """Feasible alternative AIR services for a shipment after a missed cut-off."""
+    require_full_read(request)
+    from app.agent.extra_tools import tool_reroute_options
+
+    result = await tool_reroute_options(shipment_id, at_ts)
+    return result.payload
+
+
+class ReaccommodateRequest(BaseModel):
+    to_service_id: str = Field(min_length=1, max_length=40)
+    reason: str = Field(default="DISRUPTION", max_length=16)
+
+
+@router.post("/reaccommodate/{shipment_id}")
+def reaccommodate_shipment(shipment_id: str, req: ReaccommodateRequest, request: Request):
+    """Commit a re-accommodation: roll the allocation, resolve alerts, notify."""
+    user = require_write(request)
+    from app.recovery.reaccommodate import RecoveryError, reaccommodate
+
+    try:
+        return reaccommodate(
+            shipment_id=shipment_id,
+            to_service_id=req.to_service_id,
+            reason=req.reason,
+            actor=user.get("email", "ops"),
+        )
+    except RecoveryError as e:
+        status = {"not_found": 404, "no_fit": 409}.get(e.code, 400)
+        raise HTTPException(status_code=status, detail=str(e))

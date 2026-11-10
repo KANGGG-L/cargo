@@ -14,3 +14,11 @@ out/
 # keep data dirs
 !data/**/*.gitkeep
 data/documents/
+
+# AI agent / assistant scratch dirs (not project source)
+.workbuddy/
+.zcode/
+.cursor/
+.aider*
+.claude/
+.windsurf/

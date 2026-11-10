@@ -87,6 +87,25 @@ class MockLLM:
 
 
 MOCK_PLANS: list[dict[str, Any]] = [{
+        "id": "recovery_tradeoff",
+        "keywords": ["what should i do", "what should we do", "trade-off", "tradeoff",
+                     "worth rerouting", "reroute or wait", "reaccommodate or", "cost of rerouting"],
+        "steps": [
+            {"tool": "recovery_tradeoff", "args": {"shipment_id": "SHP-2025-000001"}},
+        ],
+        "answer": (
+            "Here's the recovery trade-off for the shipment. Doing nothing keeps it on "
+            "the current service and rides the lane's historical delay band — the P80 "
+            "sits well past the customer SLA, so breach risk is high and the cost of "
+            "action is zero. Re-accommodating onto the first feasible alternative buys "
+            "near-certain schedule (P80 ~0.5 h) for a modest re-handling premium.\n\n"
+            "Recommendation: re-accommodate — the extra cost is small against the SLA "
+            "penalty and the customer-trust cost of a silent miss. Fire it from the "
+            "Recover panel on the shipment, which rolls the allocation, auto-resolves "
+            "the open exception and notifies the subscriber in one step."
+        ),
+    },
+    {
         "id": "network_capacity",
         "keywords": ["capacity impact", "rolled", "how many shipments roll", "priority clear",
                      "network load", "co-loaded", "which shipments", "pharma clear"],

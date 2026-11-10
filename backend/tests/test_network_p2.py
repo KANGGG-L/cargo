@@ -36,7 +36,7 @@ def _sql(q, *p):
 def test_agent_has_network_tools():
     names = {s.name for s in get_tool_specs()}
     assert {"network_load", "capacity_impact", "reroute_options", "manifest_lookup"} <= names
-    assert len(names) == 10
+    assert len(names) == 11  # 6 core + 4 network + recovery_tradeoff (Release C)
 
 
 def test_network_load_tool():

@@ -126,3 +126,63 @@ def test_quote_sea_air_chain_sums_legs():
 def test_quote_unknown_lane_reports_cleanly():
     result = asyncio.run(tool_quote_booking("CNYTN", "JNB", 500, "auto"))
     assert "error" in result.payload
+
+
+
+# ---------------------------------------------------------------- recovery_tradeoff (Release C)
+
+
+def _any_shipment_with_air_alloc():
+    import os
+    import sqlite3
+
+    conn = sqlite3.connect(f"file:{os.environ['DB_PATH']}?mode=ro", uri=True)
+    try:
+        row = conn.execute(
+            """
+            SELECT a.shipment_id FROM fact_allocations a
+            JOIN fact_shipment_legs l ON l.leg_id = a.leg_id
+            WHERE l.transport_mode = 'AIR' LIMIT 1
+            """
+        ).fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def test_recovery_tradeoff_returns_two_plans():
+    from app.agent.extra_tools import tool_recovery_tradeoff
+
+    sid = _any_shipment_with_air_alloc()
+    assert sid is not None
+    result = asyncio.run(tool_recovery_tradeoff(sid))
+    p = result.payload
+    assert "plan_a_do_nothing" in p and "plan_b_reaccommodate" in p
+    assert p["plan_a_do_nothing"]["incremental_cost_usd"] == 0.0
+    assert "recommendation" in p
+    # delay band present on plan A
+    assert set(p["plan_a_do_nothing"]["eta_delay_band_h"]) == {"p50", "p80", "p95"}
+
+
+def test_recovery_tradeoff_deterministic():
+    from app.agent.extra_tools import tool_recovery_tradeoff
+
+    sid = _any_shipment_with_air_alloc()
+    r1 = asyncio.run(tool_recovery_tradeoff(sid)).payload
+    r2 = asyncio.run(tool_recovery_tradeoff(sid)).payload
+    assert r1 == r2
+
+
+def test_recovery_tradeoff_unknown_shipment():
+    from app.agent.extra_tools import tool_recovery_tradeoff
+
+    result = asyncio.run(tool_recovery_tradeoff("SHP-NOPE"))
+    assert "error" in result.payload
+
+
+def test_tool_registry_has_eleven_tools():
+    from app.agent.tools import get_tool_specs
+
+    specs = get_tool_specs()
+    assert len(specs) == 11
+    assert any(s.name == "recovery_tradeoff" for s in specs)

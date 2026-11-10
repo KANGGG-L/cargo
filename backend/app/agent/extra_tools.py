@@ -827,3 +827,169 @@ MANIFEST_SPEC = ToolSpec(
     },
     executor=tool_manifest_lookup,
 )
+
+
+# --------------------------------------------------------------------------
+# recovery_tradeoff (Release C): quantify "do nothing" vs "re-accommodate"
+
+
+def _lane_delay_quantiles(conn: sqlite3.Connection, dest: str) -> dict[str, float]:
+    """Historical AIR arrival-delay quantiles (hours) for HKG->dest, from legs."""
+    rows = conn.execute(
+        """
+        SELECT delay_minutes FROM fact_shipment_legs
+        WHERE transport_mode = 'AIR' AND origin_facility = 'HKG'
+          AND destination_facility = ? AND delay_minutes IS NOT NULL
+        ORDER BY delay_minutes
+        """,
+        (dest,),
+    ).fetchall()
+    vals = [r[0] for r in rows]
+    if not vals:
+        return {"p50": 0.0, "p80": 0.0, "p95": 0.0}
+
+    def q(p: float) -> float:
+        idx = min(len(vals) - 1, int(p * len(vals)))
+        return round(vals[idx] / 60.0, 1)
+
+    return {"p50": q(0.50), "p80": q(0.80), "p95": q(0.95)}
+
+
+async def tool_recovery_tradeoff(shipment_id: str) -> ToolResult:
+    """Compare keeping a disrupted shipment on its current (rolled) service vs
+    re-accommodating it onto the first feasible alternative.
+
+    Deterministic: plan A uses the historical delay band of the lane; plan B uses
+    the alternative service's schedule and the cost delta between services
+    (rate-card-free proxy: allocated-weight * lane rate from fact_rate_cards).
+    """
+    conn = _ro()
+    try:
+        base = conn.execute(
+            """
+            SELECT l.leg_id, l.destination_facility, l.planned_depart_ts,
+                   a.service_id, a.allocated_weight_kg, s.scheduled_depart_ts, s.status
+            FROM fact_shipment_legs l
+            JOIN fact_allocations a ON a.leg_id = l.leg_id
+            LEFT JOIN dim_transport_services s ON s.service_id = a.service_id
+            WHERE l.shipment_id = ? AND l.transport_mode = 'AIR'
+            LIMIT 1
+            """,
+            (shipment_id,),
+        ).fetchone()
+        if not base:
+            return ToolResult(
+                summary="no air allocation",
+                payload={"error": f"no air-leg allocation for {shipment_id}"},
+                llm_digest=f"{shipment_id} has no air-leg allocation to evaluate.",
+            )
+        leg_id, dest, pdep, cur_service, weight, cur_depart, cur_status = base
+        weight = weight or 0.0
+
+        # first feasible alternative (same query shape as reroute_options)
+        alt = conn.execute(
+            """
+            SELECT service_id, service_no, scheduled_depart_ts, scheduled_arrive_ts,
+                   capacity_chargeable_kg - allocated_kg AS free_kg
+            FROM dim_transport_services
+            WHERE transport_mode='AIR' AND origin_facility='HKG' AND destination_facility=?
+              AND status != 'CANCELLED' AND scheduled_depart_ts > ?
+              AND (capacity_chargeable_kg - allocated_kg) >= ?
+            ORDER BY scheduled_depart_ts LIMIT 1
+            """,
+            (dest, pdep, weight),
+        ).fetchone()
+
+        q = _lane_delay_quantiles(conn, dest)
+
+        # lane air rate for a cost proxy (USD): weight * best +0KG rate
+        rate = conn.execute(
+            """
+            SELECT MIN(base_rate_usd) FROM fact_rate_cards
+            WHERE transport_mode='AIR' AND dest_zone=? AND weight_break IN ('+0KG','+300KG')
+            """,
+            (dest,),
+        ).fetchone()
+        rate_usd = rate[0] if rate and rate[0] else 3.5
+    finally:
+        conn.close()
+
+    # Plan A: do nothing — stay rolled on current/next-available of same service.
+    # SLA breach risk read from the lane P80 band; cost delta = 0 (no action).
+    plan_a = {
+        "action": "keep_current",
+        "service_id": cur_service,
+        "eta_delay_band_h": q,
+        "sla_breach_risk": "high" if q["p80"] > 2 else "medium" if q["p80"] > 0.5 else "low",
+        "incremental_cost_usd": 0.0,
+        "note": "No action; shipment waits out the disruption on its current service.",
+    }
+
+    # Plan B: re-accommodate onto the alternative — earlier certain departure,
+    # incremental cost ~ one re-handling + priority uplift proxy (10% of lane cost).
+    if alt:
+        alt_cost = round(0.10 * rate_usd * weight, 0)
+        plan_b = {
+            "action": "reaccommodate",
+            "service_id": alt[0],
+            "service_no": alt[1],
+            "depart": alt[2],
+            "arrive": alt[3],
+            "eta_delay_band_h": {"p50": 0.0, "p80": 0.5, "p95": 1.0},
+            "sla_breach_risk": "low",
+            "incremental_cost_usd": alt_cost,
+            "note": f"Roll onto {alt[1]} departing {alt[2][:16]}; buys schedule certainty.",
+        }
+        recommendation = (
+            f"Re-accommodate onto {alt[1]}: trades ~${alt_cost:,.0f} extra cost for "
+            f"cutting the P80 delay from {q['p80']}h to ~0.5h and removing SLA-breach risk."
+        )
+    else:
+        plan_b = {
+            "action": "reaccommodate",
+            "service_id": None,
+            "note": "No feasible alternative service with room — recovery not possible by reroute.",
+            "incremental_cost_usd": None,
+        }
+        recommendation = (
+            "No feasible reroute exists; the only lever is to keep the shipment and "
+            "manage the customer expectation against the lane delay band."
+        )
+
+    payload = {
+        "shipment_id": shipment_id,
+        "destination": dest,
+        "weight_kg": weight,
+        "plan_a_do_nothing": plan_a,
+        "plan_b_reaccommodate": plan_b,
+        "recommendation": recommendation,
+    }
+    digest = (
+        f"Recovery trade-off for {shipment_id} (HKG→{dest}, {weight:.0f} kg):\n"
+        f"- Do nothing: P80 delay {q['p80']}h, SLA risk {plan_a['sla_breach_risk']}, +$0.\n"
+        f"- Re-accommodate: {plan_b.get('service_no', 'n/a')}, "
+        f"+${plan_b['incremental_cost_usd'] if plan_b['incremental_cost_usd'] is not None else 'n/a'}.\n"
+        f"Recommendation: {recommendation}"
+    )
+    return ToolResult(
+        summary=f"tradeoff for {shipment_id}: {'reroute available' if alt else 'no reroute'}",
+        payload=payload,
+        llm_digest=digest,
+    )
+
+
+RECOVERY_TRADEOFF_SPEC = ToolSpec(
+    name="recovery_tradeoff",
+    description=(
+        "Quantify the cost-vs-time trade-off of two recovery choices for a disrupted "
+        "shipment: do nothing (ride the current service, risk SLA breach) vs "
+        "re-accommodate onto the first feasible alternative (pay extra, buy certainty). "
+        "Use after diagnose_anomaly when the user asks what to DO about a delay."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {"shipment_id": {"type": "string"}},
+        "required": ["shipment_id"],
+    },
+    executor=tool_recovery_tradeoff,
+)

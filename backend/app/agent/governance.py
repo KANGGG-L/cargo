@@ -19,8 +19,6 @@ from datetime import datetime, timezone
 
 from app.config import get_settings
 
-_CONFIRM_SECRET = "hkg-ct-agent-confirm"  # portfolio demo
-
 WRITE_TOOLS = {"raise_alert"}
 
 
@@ -30,8 +28,9 @@ def _now() -> str:
 
 def confirmation_token(tool_name: str, args: dict) -> str:
     """Deterministic token the caller must echo back to authorize a write."""
+    secret = get_settings().agent_confirm_secret
     canonical = tool_name + "|" + json.dumps(args, sort_keys=True, separators=(",", ":"))
-    return hmac.new(_CONFIRM_SECRET.encode(), canonical.encode(), hashlib.sha256).hexdigest()[:16]
+    return hmac.new(secret.encode(), canonical.encode(), hashlib.sha256).hexdigest()[:16]
 
 
 def verify_confirmation(tool_name: str, args: dict, token: str | None) -> bool:

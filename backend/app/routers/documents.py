@@ -5,11 +5,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from app.auth import require_session
+from app.auth import require_ops, require_session, require_shipment_access
 from app.config import get_settings
 from app.documents import generator
 
@@ -44,7 +44,8 @@ class GenerateRequest(BaseModel):
 
 
 @router.post("/{shipment_id}/generate")
-def generate_document(shipment_id: str, req: GenerateRequest):
+def generate_document(shipment_id: str, req: GenerateRequest, request: Request):
+    require_ops(request)
     conn = _conn()
     try:
         shipment = _shipment(conn, shipment_id)
@@ -85,8 +86,9 @@ def generate_document(shipment_id: str, req: GenerateRequest):
 
 
 @router.post("/{doc_id}/accept")
-def accept_awb(doc_id: str):
+def accept_awb(doc_id: str, request: Request):
     """e-AWB flow: FWB sent at generation, carrier confirmation marks accepted."""
+    require_ops(request)
     conn = _conn()
     try:
         row = conn.execute(
@@ -108,11 +110,17 @@ def accept_awb(doc_id: str):
 
 
 @router.get("/{shipment_id}")
-def list_documents(shipment_id: str):
+def list_documents(shipment_id: str, request: Request):
     conn = _conn()
     try:
+        owner = conn.execute(
+            "SELECT customer_id FROM dim_shipments WHERE shipment_id = ?", (shipment_id,)
+        ).fetchone()
+        if owner is None:
+            raise HTTPException(status_code=404, detail="shipment not found")
+        require_shipment_access(request, owner[0])
         rows = conn.execute(
-            "SELECT doc_id, doc_type, file_path, eawb_status, created_ts FROM dim_documents"
+            "SELECT doc_id, doc_type, eawb_status, created_ts FROM dim_documents"
             " WHERE shipment_id = ? ORDER BY created_ts",
             (shipment_id,),
         ).fetchall()
@@ -122,16 +130,20 @@ def list_documents(shipment_id: str):
 
 
 @router.get("/file/{doc_id}")
-def download_document(doc_id: str):
+def download_document(doc_id: str, request: Request):
     conn = _conn()
     try:
         row = conn.execute(
-            "SELECT file_path, doc_type FROM dim_documents WHERE doc_id = ?", (doc_id,)
+            """SELECT d.file_path, d.doc_type, s.customer_id
+               FROM dim_documents d JOIN dim_shipments s ON s.shipment_id = d.shipment_id
+               WHERE d.doc_id = ?""",
+            (doc_id,),
         ).fetchone()
     finally:
         conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="document not found")
+    require_shipment_access(request, row["customer_id"])
     path = Path(row["file_path"])
     if not path.exists():
         raise HTTPException(status_code=404, detail="file missing")

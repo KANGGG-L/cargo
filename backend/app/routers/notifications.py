@@ -4,10 +4,10 @@ import re
 import sqlite3
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from app.auth import require_session
+from app.auth import require_ops, require_session, require_shipment_access
 from app.config import get_settings
 from app.notifications.outbox import dispatch_pending
 
@@ -39,18 +39,20 @@ class SubscriptionRequest(BaseModel):
 
 
 @router.post("/subscriptions")
-def create_subscription(req: SubscriptionRequest):
+def create_subscription(req: SubscriptionRequest, request: Request):
     if not EMAIL_RE.match(req.email):
         raise HTTPException(status_code=422, detail="invalid email")
     if req.shipment_id is not None:
         conn = _conn()
         try:
-            if not conn.execute(
-                "SELECT 1 FROM dim_shipments WHERE shipment_id = ?", (req.shipment_id,)
-            ).fetchone():
+            owner = conn.execute(
+                "SELECT customer_id FROM dim_shipments WHERE shipment_id = ?", (req.shipment_id,)
+            ).fetchone()
+            if not owner:
                 raise HTTPException(status_code=404, detail="shipment not found")
         finally:
             conn.close()
+        require_shipment_access(request, owner[0])
 
     conn = _conn()
     try:
@@ -70,7 +72,8 @@ def create_subscription(req: SubscriptionRequest):
 
 
 @router.get("/subscriptions")
-def list_subscriptions():
+def list_subscriptions(request: Request):
+    require_ops(request)
     conn = _conn()
     try:
         rows = conn.execute(
@@ -82,7 +85,8 @@ def list_subscriptions():
 
 
 @router.delete("/subscriptions/{sub_id}")
-def delete_subscription(sub_id: int):
+def delete_subscription(sub_id: int, request: Request):
+    require_ops(request)
     conn = _conn()
     try:
         cur = conn.execute("DELETE FROM dim_subscriptions WHERE id = ?", (sub_id,))
@@ -95,7 +99,8 @@ def delete_subscription(sub_id: int):
 
 
 @router.get("/outbox")
-def outbox(limit: int = Query(50, ge=1, le=200)):
+def outbox(request: Request, limit: int = Query(50, ge=1, le=200)):
+    require_ops(request)
     conn = _conn()
     try:
         rows = conn.execute(
@@ -112,6 +117,7 @@ def outbox(limit: int = Query(50, ge=1, le=200)):
 
 
 @router.post("/dispatch")
-def dispatch():
+def dispatch(request: Request):
+    require_ops(request)
     sent = dispatch_pending()
     return {"dispatched": sent}

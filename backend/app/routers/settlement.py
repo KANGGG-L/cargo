@@ -3,10 +3,10 @@
 import sqlite3
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from app.auth import require_session
+from app.auth import require_ops, require_session, require_shipment_access
 from app.config import get_settings
 
 router = APIRouter(
@@ -82,7 +82,8 @@ def _compute_charge_lines(conn, shipment_id: str) -> list[dict]:
 
 
 @router.post("/{shipment_id}/charges")
-def build_charges(shipment_id: str):
+def build_charges(shipment_id: str, request: Request):
+    require_ops(request)
     conn = _conn()
     try:
         lines = _compute_charge_lines(conn, shipment_id)
@@ -101,8 +102,9 @@ def build_charges(shipment_id: str):
 
 
 @router.get("/aging/summary")
-def ar_aging():
+def ar_aging(request: Request):
     """AR aging buckets — the reconciliation view the product review asked for."""
+    require_ops(request)
     from datetime import datetime
 
     conn = _conn()
@@ -115,7 +117,8 @@ def ar_aging():
             ORDER BY i.created_ts
             """
         ).fetchall()
-        today = datetime.now(timezone.utc)
+        # created_ts strings are naive UTC; compare against the same basis
+        today = datetime.now(timezone.utc).replace(tzinfo=None)
         buckets = {"0-30": 0.0, "31-60": 0.0, "61-90": 0.0, "90+": 0.0}
         items = []
         for r in rows:
@@ -135,9 +138,15 @@ def ar_aging():
 
 
 @router.get("/{shipment_id}")
-def settlement_view(shipment_id: str):
+def settlement_view(shipment_id: str, request: Request):
     conn = _conn()
     try:
+        owner = conn.execute(
+            "SELECT customer_id FROM dim_shipments WHERE shipment_id = ?", (shipment_id,)
+        ).fetchone()
+        if owner is None:
+            raise HTTPException(status_code=404, detail="shipment not found")
+        require_shipment_access(request, owner[0])
         lines = [
             dict(r)
             for r in conn.execute(
@@ -164,7 +173,8 @@ class InvoiceRequest(BaseModel):
 
 
 @router.post("/{shipment_id}/invoice")
-def create_invoice(shipment_id: str, req: InvoiceRequest = None):
+def create_invoice(shipment_id: str, request: Request, req: InvoiceRequest = None):
+    require_ops(request)
     conn = _conn()
     try:
         shipment = conn.execute(
@@ -195,7 +205,8 @@ def create_invoice(shipment_id: str, req: InvoiceRequest = None):
 
 
 @router.post("/invoice/{invoice_id}/dispute")
-def dispute_invoice(invoice_id: str):
+def dispute_invoice(invoice_id: str, request: Request):
+    require_ops(request)
     conn = _conn()
     try:
         row = conn.execute("SELECT status FROM fact_invoices WHERE invoice_id = ?", (invoice_id,)).fetchone()
@@ -213,7 +224,8 @@ def dispute_invoice(invoice_id: str):
 
 
 @router.post("/invoice/{invoice_id}/pay")
-def pay_invoice(invoice_id: str):
+def pay_invoice(invoice_id: str, request: Request):
+    require_ops(request)
     conn = _conn()
     try:
         row = conn.execute("SELECT status FROM fact_invoices WHERE invoice_id = ?", (invoice_id,)).fetchone()

@@ -21,6 +21,16 @@ export default function PortalPage() {
   const [shipments, setShipments] = useState<PortalShipment[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  async function loadShipments(): Promise<void> {
+    const p = await fetch(`${API_BASE}/api/portal/shipments`, { credentials: "include", cache: "no-store" });
+    if (!p.ok) {
+      const detail = (await p.json().catch(() => ({}))).detail ?? `portal ${p.status}`;
+      throw new Error(detail);
+    }
+    const body = await p.json();
+    setShipments(Array.isArray(body.shipments) ? body.shipments : []);
+  }
+
   async function login() {
     setError(null);
     const res = await fetch(`${API_BASE}/api/portal/login`, {
@@ -35,12 +45,26 @@ export default function PortalPage() {
     }
     const v = await res.json();
     setViewer({ email: v.email, role: v.role });
-    const p = await fetch(`${API_BASE}/api/portal/shipments`).then((r) => r.json());
-    setShipments(p.shipments);
+    try {
+      await loadShipments();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }
 
   useEffect(() => {
-    login();
+    // resume an existing session when present; fall back to the demo ops login
+    fetch(`${API_BASE}/api/portal/me`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(async (v) => {
+        if (v?.email) {
+          setViewer({ email: v.email, role: v.role });
+          await loadShipments();
+        } else {
+          await login();
+        }
+      })
+      .catch(() => login());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -57,12 +81,14 @@ export default function PortalPage() {
           <input
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            aria-label="Account email"
             className="flex-1 rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-900"
           />
           <input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            aria-label="Password"
             className="w-40 rounded border border-zinc-300 bg-white px-2 py-1.5 text-xs text-zinc-900"
           />
           <button onClick={login} className="rounded bg-zinc-900 px-4 py-1.5 text-xs text-white hover:bg-zinc-700">

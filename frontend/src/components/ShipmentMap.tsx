@@ -43,7 +43,7 @@ export default function ShipmentMap({
     <MapContainer
       center={center}
       zoom={4}
-      style={{ height: "100%", width: "100%", background: "#0a0f1d" }}
+      style={{ height: "100%", width: "100%", background: "#f4f4f5" }}
       scrollWheelZoom={false}
     >
       <TileLayer
@@ -86,7 +86,7 @@ export default function ShipmentMap({
             <CircleMarker
               center={[first.lat, first.lon]}
               radius={5}
-              pathOptions={{ color: t.color, fillColor: "#0a0f1d", fillOpacity: 1, weight: 2 }}
+              pathOptions={{ color: t.color, fillColor: "#ffffff", fillOpacity: 1, weight: 2 }}
             >
               <Tooltip>{t.origin}</Tooltip>
             </CircleMarker>

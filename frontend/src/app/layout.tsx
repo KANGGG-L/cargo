@@ -1,16 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import {
-  Bell,
-  Bot,
-  ClipboardList,
-  Network,
-  Ship,
-  Upload,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { Ship } from "lucide-react";
+import SidebarNav from "@/components/SidebarNav";
+import TopBar from "@/components/TopBar";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,33 +20,6 @@ export const metadata: Metadata = {
   description:
     "Multimodal (Sea-Air-Land) AI cargo control tower centered on the Hong Kong hub",
 };
-
-const NAV_GROUPS: { group: string; items: { href: string; label: string; icon: LucideIcon }[] }[] = [
-  {
-    group: "Operations",
-    items: [
-      { href: "/", label: "Overview", icon: Ship },
-      { href: "/network", label: "Network", icon: Network },
-      { href: "/orders", label: "Orders", icon: ClipboardList },
-    ],
-  },
-  {
-    group: "Exceptions",
-    items: [{ href: "/alerts", label: "Alerts", icon: Bell }],
-  },
-  {
-    group: "Data",
-    items: [{ href: "/ingest", label: "Ingest", icon: Upload }],
-  },
-  {
-    group: "Insight",
-    items: [{ href: "/agent", label: "AI Agent", icon: Bot }],
-  },
-  {
-    group: "Account",
-    items: [{ href: "/portal", label: "Portal", icon: Users }],
-  },
-];
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
@@ -77,25 +42,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
                 </div>
               </div>
             </div>
-            <nav className="flex-1 overflow-y-auto px-3 py-4">
-              {NAV_GROUPS.map((group) => (
-                <div key={group.group} className="mb-5">
-                  <div className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                    {group.group}
-                  </div>
-                  {group.items.map((item) => (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className="mb-0.5 flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
-                    >
-                      <item.icon className="h-4 w-4 text-zinc-400" strokeWidth={2} />
-                      {item.label}
-                    </Link>
-                  ))}
-                </div>
-              ))}
-            </nav>
+            <SidebarNav />
             <div className="border-t border-zinc-200 px-5 py-3 text-[10px] leading-relaxed text-zinc-400">
               Synthetic operational data calibrated to public industry benchmarks.
               Portfolio project.
@@ -104,6 +51,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
 
           {/* Main */}
           <div className="flex min-w-0 flex-1 flex-col">
+            <TopBar />
             <main className="mx-auto w-full max-w-[1440px] flex-1 px-6 py-6">
               {children}
             </main>

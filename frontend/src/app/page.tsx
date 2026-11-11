@@ -21,10 +21,14 @@ function OpsClockBanner() {
 
   const load = () => api.opsClock().then(setClock).catch(() => {});
   useEffect(() => {
-    load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let alive = true;
+    const tick = () => api.opsClock().then((c) => alive && setClock(c)).catch(() => {});
+    tick();
+    const t = setInterval(tick, 5000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
   }, []);
 
   async function toggle() {
@@ -315,12 +319,12 @@ export default function OverviewPage() {
 
       {/* KPI rows — three modes at equal footing */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <KpiCard label="Air OTP (±15min)" value={k.air_otp_pct} unit="%" hint="flight leg level" />
-        <KpiCard label="Sea OTP (±4h)" value={k.sea_otp_pct} unit="%" hint="feeder barge legs" />
-        <KpiCard label="Truck OTP (±1h)" value={k.truck_otp_pct} unit="%" hint="cross-border legs" />
-        <KpiCard label="E2E Shipment OTP" value={k.multimodal_otp_pct} unit="%" hint="±60 min tolerance" />
-        <KpiCard label="Cargo Load Factor" value={k.load_factor_pct} unit="%" hint="RTK / ATK, HKG network" />
-        <KpiCard label="Hub Dwell (avg)" value={k.avg_dwell_hours} unit="h" hint="feeder arrival → wheels up" />
+        <KpiCard label="Air OTP (±15min)" value={k.air_otp_pct.toFixed(1)} unit="%" hint="flight leg level" />
+        <KpiCard label="Sea OTP (±4h)" value={k.sea_otp_pct.toFixed(1)} unit="%" hint="feeder barge legs" />
+        <KpiCard label="Truck OTP (±1h)" value={k.truck_otp_pct.toFixed(1)} unit="%" hint="cross-border legs" />
+        <KpiCard label="E2E Shipment OTP" value={k.multimodal_otp_pct.toFixed(1)} unit="%" hint="±60 min tolerance" />
+        <KpiCard label="Cargo Load Factor" value={k.load_factor_pct.toFixed(1)} unit="%" hint="RTK / ATK, HKG network" />
+        <KpiCard label="Hub Dwell (avg)" value={k.avg_dwell_hours.toFixed(1)} unit="h" hint="feeder arrival → wheels up" />
         <KpiCard
           label="Revenue (18 mo)"
           value={`$${k.total_revenue_musd}M`}
@@ -328,7 +332,7 @@ export default function OverviewPage() {
         />
         <KpiCard
           label="Gross Margin"
-          value={k.gross_margin_pct}
+          value={k.gross_margin_pct.toFixed(1)}
           unit="%"
           tone={k.gross_margin_pct > 15 ? "good" : "warn"}
         />

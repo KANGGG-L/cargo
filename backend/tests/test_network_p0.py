@@ -1,4 +1,4 @@
-"""P0 shared-capacity network invariants (docs/NETWORK_UPGRADE_PLAN.md §5.1.5).
+"""P0 shared-capacity network invariants (docs/acceptance/2026-11-09-p0-shared-capacity.md).
 
 These run against the test copy of the demo DB (see conftest.py). They assert the
 five invariants I1-I5 plus the shared-service / cut-off / rollover / typhoon

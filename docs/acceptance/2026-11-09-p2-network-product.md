@@ -1,6 +1,6 @@
 # P2 验收记录 — 网络级产品能力(Release 3 / Stage Gate ③)
 
-> 日期:2026-11-09 | 对应计划:`docs/NETWORK_UPGRADE_PLAN.md` §5.3、§7.2
+> 日期:2026-11-09 | 阶段目标:Release 3 (P2) 网络级产品能力 (服务感知 ETA、告警班次聚类与 SLA、网络态势页与 Agent 决策工具)
 > 结论:**数据+引擎+API+前端构建 PASS**;GUI 浏览器点击级 UAT **顺延**(同 P0/P1)
 
 ## 1. 交付内容

@@ -1,18 +1,19 @@
 # Identity, Roles & 2FA (R5-3)
 
 > Status: roles **implemented**; 2FA **designed, not implemented** (portfolio
-> scope — no real IdP, per `NETWORK_UPGRADE_PLAN.md` §6.3 R5-3 and the non-goals
-> in §4.2). This page documents the model and the 2FA design so the gap is
+> scope — external IdP integration is a deliberate non-goal; focus is on
+> verifiable RBAC authorization, row-level data scoping, and access audit
+> trails). This page documents the model and the 2FA design so the gap is
 > explicit rather than silent.
 
 ## Role model (implemented — `backend/app/auth.py`)
 
 | Role | Write | Read scope | Demo account |
 |---|---|---|---|
-| `ops` | ✅ | full network | `ops@demo.local` |
-| `manager` | ✅ | full network | `manager@demo.local` |
-| `partner` | ❌ | full network (read-only connected party) | `partner@demo.local` |
-| `customer` | ❌ | row-level (own `customer_id` only) | `acme@demo.local` (CUST-001) |
+| `ops` | [YES] | full network | `ops@demo.local` |
+| `manager` | [YES] | full network | `manager@demo.local` |
+| `partner` | [NO] | full network (read-only connected party) | `partner@demo.local` |
+| `customer` | [NO] | row-level (own `customer_id` only) | `acme@demo.local` (CUST-001) |
 
 All passwords: `demo1234`.
 

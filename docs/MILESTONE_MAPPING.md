@@ -3,7 +3,8 @@
 > Source of truth: `backend/app/ingest/standards.py`. This table is generated from
 > `MILESTONE_STANDARDS`. Only the **public** parts of each standard are used
 > (status-code lists, event categories). We do **not** claim conformance to DCSA
-> v3 — its full spec needs member access (see `NETWORK_UPGRADE_PLAN.md` R10 / §2.4).
+> v3 — its full specification requires member access, so only publicly available
+> code lists and event categories are referenced.
 
 The project keeps 6 internal Cargo-iQ-style milestone codes and maps them onto
 the vocabularies the industry exchanges. The FSU ingest parser accepts any alias

@@ -1,7 +1,7 @@
 # 延后项闭合记录 — 桑基双色流 + 四角色/2FA 设计
 
-> 日期:2026-11-09 | 对应计划:`NETWORK_UPGRADE_PLAN.md` §5.3.3、§6.3 R5-3
-> 结论:两个此前标注"延后"的子项已完成并验证。计划 §4.2 的**非目标**(真实 ADS-B/AIS、Postgres/Kafka/K8s、ML ETA、真实 SMTP、Gartner 评级)仍按约定**不做**。
+> 日期:2026-11-09 | 阶段目标:延后项闭合 (桑基图需求与舱位双色流、四角色模型 RBAC 与 2FA 设计落地)
+> 结论:两个此前标注"延后"的子项已完成并验证。项目明确非目标 (真实 ADS-B/AIS、Postgres/Kafka/K8s、ML ETA、真实 SMTP、Gartner 评级) 仍按约定**不做**。
 
 ## 1. 桑基"需求 vs 舱位"双色流(§5.3.3)
 
@@ -28,5 +28,5 @@
 - `pnpm build` 通过;`openapi.json` 重新导出(新增 `sort` 参数);前后端经 Orca 浏览器复验
 - 演示库已复原 pristine(含 4 个角色账号)
 
-## 仍然不做(计划 §4.2 非目标,范围纪律)
+## 仍然不做(项目边界与非目标)
 真实 ADS-B/AIS/承运人 EDI 接入、Postgres/Kafka/K8s、多租户 SaaS、ML ETA 训练、真实 SMTP、LangGraph 替换、Gartner 式评级。这些是刻意的作品集可复现性取舍,不在本轮范围。

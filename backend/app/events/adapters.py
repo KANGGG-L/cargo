@@ -5,7 +5,7 @@ Each adapter maps a source-specific record onto the common event envelope:
    trust_level, payload_json, correlation_id)
 
 ONE Record-style event-type names are used so the log reads like a standard
-LogisticsEvent stream (see docs/NETWORK_UPGRADE_PLAN.md R4-1). The milestone
+LogisticsEvent stream (aligned with docs/MILESTONE_MAPPING.md). The milestone
 code <-> event_type map is intentionally small and explicit.
 """
 

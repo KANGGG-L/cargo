@@ -1,4 +1,4 @@
-"""P1 DES engine + event-log invariants (docs/NETWORK_UPGRADE_PLAN.md §5.2.6)."""
+"""P1 DES engine + event-log invariants (docs/acceptance/2026-11-09-p1-des-eventlog.md)."""
 
 import asyncio
 import os

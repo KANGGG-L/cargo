@@ -9,7 +9,7 @@ vocabularies the industry actually exchanges:
 
 Only the PUBLIC parts of the standards are used (status-code lists, event
 categories). We deliberately do NOT claim conformance to DCSA v3 (its full spec
-needs member access — see docs/NETWORK_UPGRADE_PLAN.md R10 / §2.4). The map is
+needs member access; only public code lists are referenced). The map is
 the single source of truth for alias resolution in the FSU parser and for the
 docs/MILESTONE_MAPPING.md table.
 """

@@ -1,4 +1,4 @@
-"""P2 network-level product tests (docs/NETWORK_UPGRADE_PLAN.md §5.3.6)."""
+"""P2 network-level product tests (docs/acceptance/2026-11-09-p2-network-product.md)."""
 
 import asyncio
 import os

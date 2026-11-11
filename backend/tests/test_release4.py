@@ -1,4 +1,4 @@
-"""Release 4 — standards & data quality (docs/NETWORK_UPGRADE_PLAN.md §6.2)."""
+"""Release 4 — standards & data quality (docs/acceptance/2026-11-09-r4-standards-quality.md)."""
 
 import asyncio
 import os

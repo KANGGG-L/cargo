@@ -869,7 +869,7 @@ def generate_disruption_events():
 NET_SEED = 42
 
 # Per-mode capacity + schedule constants (fictional values calibrated to public
-# industry magnitudes — see docs/NETWORK_UPGRADE_PLAN.md A.4; not measured).
+# industry magnitudes; not measured).
 AIR_LANES = ["LAX", "ORD", "LHR", "FRA", "NRT", "SIN", "SYD"]
 # D2 (revised): the plan's "3 services/day/lane AND 8-15 shipments/service" is
 # arithmetically inconsistent with the real demand of ~1.5 AIR legs/lane/day

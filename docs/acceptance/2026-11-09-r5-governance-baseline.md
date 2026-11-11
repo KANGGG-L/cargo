@@ -1,6 +1,6 @@
 # Release 5 验收记录 — 治理与工程基线(Stage Gate ⑤ / 全量收尾)
 
-> 日期:2026-11-09 | 对应计划:`docs/NETWORK_UPGRADE_PLAN.md` §6.3(R5-1…R5-6)
+> 日期:2026-11-09 | 阶段目标:Release 5 (R5) 治理与工程基线 (R5-1 语义层 Eval Harness、R5-2 Agent 写操作治理、R5-3 审计中间件、R5-4 可观测 SLO、R5-5 OpenAPI 契约、R5-6 工程基线加固)
 > 结论:**数据+API+契约层 PASS**;GUI 浏览器点击级 UAT 顺延(同前)
 
 ## 1. 交付内容
